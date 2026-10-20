@@ -37,9 +37,9 @@ You need a jailbroken Kindle with KUAL; the hotfix puts FBInk at `/mnt/us/libkh/
 
 ```sh
 # 1. turn scans into 1072x1448 grayscale JPEGs (q80, light sharpening)
-tools/prep-photos.sh ~/Downloads/film-scans ~/Downloads/film-photos-kindle
+tools/prep-photos.sh photos/source/scans photos/kindle-frames
 # 2. build and copy onto the mounted Kindle
-tools/install.sh /Volumes/Kindle ~/Downloads/film-photos-kindle
+tools/install.sh /Volumes/Kindle photos/kindle-frames
 ```
 
 `prep-photos.sh` fills the screen with portrait shots (a centre crop loses at most 12%) and puts landscape shots on a black mat. It stretches contrast per image, which rescues thin negatives (`STRETCH=0` turns that off), and leaves out the frames listed in `tools/skip.txt`. Environment knobs: `QUALITY`, `MAT`, `MAX_CROP`, `SHARPEN`, `JOBS`.
@@ -47,7 +47,7 @@ tools/install.sh /Volumes/Kindle ~/Downloads/film-photos-kindle
 To see the touch sequence without a Kindle:
 
 ```sh
-cd filmframe && go run . -config /dev/null -preview /tmp/pv -photo ~/Downloads/film-photos-kindle/000001.jpg
+cd filmframe && go run . -config /dev/null -preview /tmp/pv -photo ../photos/kindle-frames/000001.jpg
 ```
 
 ## Settings

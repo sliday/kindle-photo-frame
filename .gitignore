@@ -1,3 +1,5 @@
 dist/
 staging/
 .DS_Store
+photos/
+share/

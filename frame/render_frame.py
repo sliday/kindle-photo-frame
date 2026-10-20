@@ -8,7 +8,7 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
-PHOTO_DIR = os.path.expanduser("~/Downloads/film-photos-kindle")
+PHOTO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "photos", "kindle-frames")
 
 
 def _principled(name, color, rough):
