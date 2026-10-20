@@ -36,6 +36,10 @@ func runDevice(cfg Config) error {
 		return err
 	}
 	log.Printf("fbink: %s", fb.Bin)
+	fb.Inverted = panelInverted
+	if panelInverted() {
+		log.Printf("system Dark Mode is on: sending frames as negatives so photos show as positives")
+	}
 	fr, err := NewFrame(fb)
 	if err != nil {
 		return err

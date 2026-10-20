@@ -43,6 +43,26 @@ func TestDitherAverageTracksInput(t *testing.T) {
 	}
 }
 
+func TestNegativeStaysOnPaletteAndRoundTrips(t *testing.T) {
+	img := image.NewGray(image.Rect(0, 0, 40, 10))
+	for i := range img.Pix {
+		img.Pix[i] = uint8((i % 16) * 17)
+	}
+	r := image.Rect(5, 2, 30, 8)
+	n := negative(img, r)
+	if n.Bounds() != r {
+		t.Fatalf("bounds %v", n.Bounds())
+	}
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			v, w := img.GrayAt(x, y).Y, n.GrayAt(x, y).Y
+			if int(v)+int(w) != 255 || w%17 != 0 {
+				t.Fatalf("(%d,%d): %d -> %d", x, y, v, w)
+			}
+		}
+	}
+}
+
 func TestDiffRect(t *testing.T) {
 	a := image.NewGray(image.Rect(0, 0, 100, 100))
 	b := image.NewGray(a.Bounds())

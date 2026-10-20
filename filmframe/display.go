@@ -30,6 +30,10 @@ type Display interface {
 type FBInk struct {
 	Bin      string
 	Waveform string // waveform for partial updates, e.g. GC16 or REAGL
+	// Inverted reports whether the system Dark Mode has the panel inverting in hardware.
+	// While it does, frames go out as negatives so they land on screen as positives.
+	Inverted func() bool
+	inv      bool
 	tmp      string
 }
 
@@ -71,13 +75,20 @@ func findFBInk() string {
 func (f *FBInk) Show(img *image.Gray, r image.Rectangle, mode Refresh) error {
 	if mode == Full {
 		r = screenRect
+		if f.Inverted != nil {
+			f.inv = f.Inverted()
+		}
 	}
 	r = r.Intersect(screenRect)
 	if r.Empty() {
 		return nil
 	}
+	var src image.Image = img.SubImage(r)
+	if f.inv {
+		src = negative(img, r)
+	}
 	path := filepath.Join(f.tmp, "frame.png")
-	if err := writePNG(path, img.SubImage(r)); err != nil {
+	if err := writePNG(path, src); err != nil {
 		return err
 	}
 	// -q quiet, -g image at its pixel position, -W waveform, -f flash, -w wait for the
@@ -93,6 +104,19 @@ func (f *FBInk) Show(img *image.Gray, r image.Rectangle, mode Refresh) error {
 		return fmt.Errorf("fbink %s: %v: %s", strings.Join(args, " "), err, out)
 	}
 	return nil
+}
+
+// negative copies r of img with every level flipped; panel levels stay on the 16-step palette.
+func negative(img *image.Gray, r image.Rectangle) *image.Gray {
+	out := image.NewGray(r)
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		s := img.Pix[img.PixOffset(r.Min.X, y):img.PixOffset(r.Max.X, y)]
+		d := out.Pix[out.PixOffset(r.Min.X, y):out.PixOffset(r.Max.X, y)]
+		for i, v := range s {
+			d[i] = 255 - v
+		}
+	}
+	return out
 }
 
 // Clear blanks the panel with a flashing white refresh.
