@@ -1,0 +1,1 @@
+Lucide icons, ISC license, https://lucide.dev (lucide-static 0.460.0)

@@ -1,0 +1,23 @@
+{
+	"items": [
+		{
+			"name": "Film Frame",
+			"priority": 0,
+			"items": [
+				{
+					"name": "Start frame",
+					"priority": 1,
+					"action": "/bin/sh",
+					"params": "/mnt/us/extensions/filmframe/bin/start.sh",
+					"exitmenu": true
+				},
+				{
+					"name": "Stop frame",
+					"priority": 2,
+					"action": "/bin/sh",
+					"params": "/mnt/us/extensions/filmframe/bin/stop.sh"
+				}
+			]
+		}
+	]
+}
