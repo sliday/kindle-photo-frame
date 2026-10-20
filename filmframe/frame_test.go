@@ -184,7 +184,7 @@ func TestConfigParses(t *testing.T) {
 		c.PowerMode != "sleep" || c.AwakeAfter != 90*time.Second {
 		t.Fatalf("%+v", c)
 	}
-	if d := DefaultConfig(); d.PowerMode != "auto" || d.AwakeAfter != time.Minute {
+	if d := DefaultConfig(); d.PowerMode != "awake" || d.AwakeAfter != time.Minute {
 		t.Fatalf("defaults %+v", d)
 	}
 	os.WriteFile(p, []byte("order = sideways\n"), 0o644)

@@ -54,7 +54,7 @@ func DefaultConfig() Config {
 		FadeWaveform:  "GC16",
 		TouchDevice:   "auto",
 		LongPress:     3 * time.Second,
-		PowerMode:     "auto",
+		PowerMode:     "awake",
 		AwakeAfter:    time.Minute,
 	}
 }
