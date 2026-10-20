@@ -72,7 +72,9 @@ Wake-ups use both PW4 RTCs (`/sys/class/rtc/rtc{0,1}/wakealarm`, relative form) 
 
 ## Frame stand (3D print)
 
-`frame/` holds a printable stand shaped like the Claude Code bot: arms beside the photo, four legs as feet, the charger room between the middle legs. The wood covers the Kindle's black front except a 2.5 mm line (or a paper mat in the `mat` version). Print files, renders and notes for the printer are in `frame/print/` and [frame/PRINTING.md](frame/PRINTING.md). Rebuild after changing a number in `frame/build_frame.py`:
+`frame/` holds a printable dark-walnut stand shaped like the Claude Code bot: arms beside the photo, four legs as feet. The micro-USB plug hangs down between the middle legs and the cable leaves through a U-slot in the back plate, then lies on the shelf. The wood covers the Kindle's black front except a 2.5 mm line (or a paper mat in the `mat` version).
+
+![how the cable runs](frame/print/render-section.png) Print files, renders and notes for the printer are in `frame/print/` and [frame/PRINTING.md](frame/PRINTING.md). Rebuild after changing a number in `frame/build_frame.py`:
 
 ```sh
 cd frame && blender -b -P build_frame.py -- print --render

@@ -3,3 +3,7 @@ staging/
 .DS_Store
 photos/
 share/
+.context/
+.gstack/
+__pycache__/
+*.blend1

@@ -35,7 +35,11 @@ POCKET_D = 8.5                                # Kindle 8.18 + play
 FRONT_T, BACK_T = 2.4, 3.0                    # plate thicknesses
 WALL_SIDE, WALL_TOP = 8.0, 3.0
 RAIL = 10.0                                   # solid rail under the Kindle
-LEG_H = 22.0                                  # legs below the body = charger space with the rail
+# legs below the body: room for a 25 mm straight micro-USB plug whose cable bends back
+# (12 mm radius) and still clears the shelf with the 10 degree lean (Codex consult)
+LEG_H = 36.0
+CABLE_SLOT_W = 16.0                           # back-plate exit, centred behind the micro-USB port
+PLUG_LEN, CABLE_BEND_R, CABLE_D = 25.0, 12.0, 4.0  # worst-case straight plug, for the clearance check
 LEG_FRAC = [(0.0, 0.116), (0.221, 0.337), (0.663, 0.779), (0.884, 1.0)]  # from the bot's proportions
 ARM_OUT = 9.0
 ARM_FRAC = (0.58, 0.75)                       # arm span as a share of body height, from the bottom
@@ -193,6 +197,29 @@ def floor_z(y):
     return -LEG_H + y * math.tan(LEAN)
 
 
+PORT_Y = FRONT_T + K_D / 2                    # port centre, halfway through the Kindle
+
+
+def cable_path(plug_len=PLUG_LEN, r=CABLE_BEND_R, run=150.0, steps=18):
+    """Centreline (y, z) of a straight micro-USB plug's cable: down from the plug tail, a bend of
+    radius r toward the back, then lying on the leaned shelf. Returns (points, spare_mm): spare is
+    the straight drop left before the bend; below zero the cable would hit the shelf."""
+    y0, z_tail = PORT_Y, RAIL - plug_len
+    ye = y0 + r + r * math.sin(LEAN)          # end of the 90+LEAN degree bend
+    zb = floor_z(ye) + CABLE_D / 2 / math.cos(LEAN) + r * math.cos(LEAN)
+    pts = [(y0, z_tail)]
+    for k in range(steps + 1):
+        a = math.pi + (math.pi / 2 + LEAN) * k / steps
+        pts.append((y0 + r + r * math.cos(a), zb + r * math.sin(a)))
+    y_end = ye + run
+    pts.append((y_end, floor_z(y_end) + CABLE_D / 2 / math.cos(LEAN)))
+    return pts, z_tail - zb
+
+
+_spare = cable_path()[1]
+assert _spare >= 2.0, f"a {PLUG_LEN} mm plug leaves the cable {_spare:.1f} mm short of the shelf; raise LEG_H"
+
+
 def eye_cutters(cx, cz, pointing_right):
     """Chevron eye ('>' or '<') engraved EYE_DEPTH into the front face."""
     s = 1 if pointing_right else -1
@@ -237,7 +264,7 @@ def make_front(name, with_mat):
                            (WINDOW_BEVEL, rounded(win)), (D_A + 1, rounded(win))])]
     cut.append(box("pocket", WALL_SIDE, FRONT_T, RAIL, W - WALL_SIDE, D_A + 1, POCKET_Z1, 6.5))
     # charger room behind the bottom rail, open to the back and to the gap between the legs
-    cut.append(box("cavity", MOUTH[0], FRONT_T, -LEG_H - 1, MOUTH[1], D_A + 1, RAIL + 0.5))
+    cut.append(box("cavity", MOUTH[0], FRONT_T, -LEG_H - 12, MOUTH[1], D_A + 1, RAIL + 0.5, 2.0))
     if with_mat:
         mo = mat_outer()
         cut.append(box("rebate", mo[0] - 0.3, FRONT_T - MAT_T, mo[1] - 0.3, mo[2] + 0.3, FRONT_T + 0.5, mo[3] + 0.3, 1.5))
@@ -289,7 +316,10 @@ def make_back(name):
         bpy.context.scene.collection.objects.link(fo)
         fins.append(fo)
     apply_boolean(ob, fins, "UNION")
-    cut = [box("notch", MOUTH[0] + 5, D_A - 1, -LEG_H - 1, MOUTH[1] - 5, D + 1, 6.0, 2.0)]
+    # U-slot straight behind the port: the one obvious way out for the cable
+    px = KX0 + PORT_X
+    cut = [box("cable-slot", px - CABLE_SLOT_W / 2, D_A - 1, -LEG_H - 12, px + CABLE_SLOT_W / 2, D + 1,
+               RAIL + 0.5, CABLE_SLOT_W / 2 - 0.05)]
     for x in (WALL_SIDE / 2, W - WALL_SIDE / 2):
         for z in SCREW_Z:
             cut.append(cylinder_y("clear", x, z, SCREW_CLEAR / 2, D_A - 1, D + 1))
@@ -350,6 +380,8 @@ with open(os.path.join(OUT, "dimensions.txt"), "w") as f:
     f.write(f"image bottom edge sits {BEZEL_BOTTOM} mm above the Kindle's bottom edge (STEP model)\n")
     f.write(f"charger room under the Kindle: {MOUTH[1]-MOUTH[0]:.1f} wide x {RAIL + LEG_H:.1f} tall, "
             f"micro-USB at {KX0 + PORT_X:.1f}, power button at {KX0 + BUTTON_X:.1f} (opening {MOUTH[0]:.1f}..{MOUTH[1]:.1f})\n")
+    f.write(f"cable: exits through a {CABLE_SLOT_W:.0f} mm U-slot in the back plate behind the port; a {PLUG_LEN:.0f} mm "
+            f"straight plug with a {CABLE_BEND_R:.0f} mm bend has {_spare:.1f} mm to spare above the shelf\n")
 
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "film-frame.blend"))
 if RENDER:
@@ -358,5 +390,7 @@ if RENDER:
     only = next((a.split("=", 1)[1] for a in ARGS if a.startswith("--only=")), None)
     render_frame.render(parts, OUT, dict(W=W, H=H, D=D, D_A=D_A, FRONT_T=FRONT_T, KX0=KX0, KZ0=KZ0,
                                          K_W=K_W, K_H=K_H, K_D=K_D, SX0=SX0, SZ0=SZ0, SCREEN_W=SCREEN_W,
-                                         SCREEN_H=SCREEN_H, LEG_H=LEG_H, LEAN=LEAN),
+                                         SCREEN_H=SCREEN_H, LEG_H=LEG_H, LEAN=LEAN, RAIL=RAIL,
+                                         PORT_X=KX0 + PORT_X, PORT_Y=PORT_Y, PLUG_LEN=PLUG_LEN,
+                                         CABLE_D=CABLE_D, CABLE=cable_path()[0], SPARE=_spare),
                         quick="--quick" in ARGS, only=only)

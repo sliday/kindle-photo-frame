@@ -27,7 +27,9 @@ def wood(name, base):
     nt = m.node_tree
     n, l = nt.nodes, nt.links
     bsdf = n["Principled BSDF"]
-    bsdf.inputs["Roughness"].default_value = 0.58
+    bsdf.inputs["Roughness"].default_value = 0.72
+    if "Specular IOR Level" in bsdf.inputs:  # matte wood fill: little sheen, so dark woods stay dark
+        bsdf.inputs["Specular IOR Level"].default_value = 0.2
     co = n.new("ShaderNodeTexCoord")
     mp = n.new("ShaderNodeMapping")
     mp.inputs["Scale"].default_value = (1.0, 1.0, 0.12)
@@ -122,6 +124,53 @@ def look_at(cam, target):
     cam.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
 
 
+def cable_object(p, mat):
+    """The worst-case straight plug and its cable, as meshes (so the cutaway can slice them)."""
+    px, py = p["PORT_X"], p["PORT_Y"]
+    plug = rounded_prism("plug", px - 5.25, p["RAIL"] - p["PLUG_LEN"], px + 5.25, p["RAIL"] - 0.2, 1.5,
+                         py - 3.25, py + 3.25)
+    cd = bpy.data.curves.new("cable", "CURVE")
+    cd.dimensions = "3D"
+    cd.bevel_depth = p["CABLE_D"] / 2
+    cd.bevel_resolution = 4
+    cd.use_fill_caps = True
+    sp = cd.splines.new("POLY")
+    pts = p["CABLE"]
+    sp.points.add(len(pts) - 1)
+    for i, (y, z) in enumerate(pts):
+        sp.points[i].co = (px, y, z, 1)
+    co = bpy.data.objects.new("cable-curve", cd)
+    bpy.context.scene.collection.objects.link(co)
+    dg = bpy.context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(co.evaluated_get(dg))
+    bpy.data.objects.remove(co)
+    cable = bpy.data.objects.new("cable", me)
+    bpy.context.scene.collection.objects.link(cable)
+    for ob in (plug, cable):
+        ob.data.materials.append(mat)
+    return plug, cable
+
+
+def annotate(png, cam, labels, font):
+    """Draw callout lines and labels onto a finished render with ImageMagick.
+    labels: [(text, world_point, (dx, dy) offset of the text from the point in pixels)]."""
+    import subprocess
+    from bpy_extras.object_utils import world_to_camera_view
+    sc = bpy.context.scene
+    w = sc.render.resolution_x * sc.render.resolution_percentage // 100
+    h = sc.render.resolution_y * sc.render.resolution_percentage // 100
+    s = w / 1600
+    cmd = ["magick", png, "-font", font, "-pointsize", str(int(30 * s)), "-strokewidth", str(max(1, int(3 * s)))]
+    for text, pt, (dx, dy) in labels:
+        v = world_to_camera_view(sc, cam, Vector(pt))
+        x, y = v.x * w, (1 - v.y) * h
+        tx, ty = x + dx * s, y + dy * s
+        cmd += ["-fill", "none", "-stroke", "#1d1d1f", "-draw", f"line {x:.0f},{y:.0f} {tx:.0f},{ty:.0f}",
+                "-fill", "#1d1d1f", "-stroke", "none", "-draw", f"circle {x:.0f},{y:.0f} {x + 6 * s:.0f},{y:.0f}",
+                "-draw", f"text {tx + (8 if dx >= 0 else -8) * s:.0f},{ty + 10 * s:.0f} '{text}'"]
+    subprocess.run(cmd + [png], check=True)
+
+
 def render(parts, out, p, quick=False, only=None):
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
@@ -162,17 +211,20 @@ def render(parts, out, p, quick=False, only=None):
     screen = screen_plane(p, pick("000013(31).jpg"))
 
     oak = wood("oak", (0.50, 0.32, 0.17))
-    walnut = wood("walnut", (0.085, 0.040, 0.018))
+    walnut = wood("walnut", (0.018, 0.0085, 0.004))
     paper = _principled("mat", (0.74, 0.70, 0.62), 0.85)
-    for ob in list(parts.values()) + [kindle, screen]:
+    plug, cable = cable_object(p, _principled("cable", (0.012, 0.012, 0.013), 0.55))
+    for ob in list(parts.values()) + [kindle, screen, plug, cable]:
         ob.parent = root
 
+    # a shelf slab rather than a plane, so the cutaway shows it in section
     floor = bpy.data.objects.new("floor", bpy.data.meshes.new("floor"))
     sc.collection.objects.link(floor)
     bm = bmesh.new()
-    bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=1.5)
+    bmesh.ops.create_cube(bm, size=1.0)
     bm.to_mesh(floor.data)
     bm.free()
+    floor.scale, floor.location = (1.5, 1.5, 0.018), (0, 0, -0.009)
     floor.data.materials.append(_principled("shelf", (0.62, 0.60, 0.57), 0.7))
     wall = bpy.data.objects.new("wall", bpy.data.meshes.new("wall"))
     sc.collection.objects.link(wall)
@@ -219,10 +271,58 @@ def render(parts, out, p, quick=False, only=None):
         bpy.ops.render.render(write_still=True)
         print("rendered", fname)
 
-    tgt = (0.066, 0.02, 0.095)
-    shot("render-oak.png", (-0.17, -0.50, 0.16), tgt, "front-classic", False, oak, "000013(31).jpg")
-    shot("render-walnut-mat.png", (0.30, -0.47, 0.15), tgt, "front-mat", True, walnut, "000001.jpg")
-    shot("render-back.png", (0.42, 0.40, 0.20), (0.066, 0.03, 0.06), "front-classic", False, oak, "000001.jpg",
+    tgt = (0.066, 0.02, 0.105)
+    shot("render-walnut.png", (-0.17, -0.52, 0.17), tgt, "front-classic", False, walnut, "000013(31).jpg")
+    shot("render-walnut-mat.png", (0.30, -0.49, 0.16), tgt, "front-mat", True, walnut, "000001.jpg")
+    shot("render-back.png", (0.42, 0.40, 0.20), (0.066, 0.03, 0.06), "front-classic", False, walnut, "000001.jpg",
          wall_on=False)
     cam_d.lens = 85
-    shot("render-front.png", (0.066, -0.75, 0.11), (0.066, 0.0, 0.098), "front-classic", False, oak, "000013(31).jpg")
+    shot("render-front.png", (0.066, -0.80, 0.12), (0.066, 0.0, 0.108), "front-classic", False, walnut, "000013(31).jpg")
+
+    # where the charger goes: low behind the frame, then a cutaway through the port
+    cam_d.lens = 50
+    shot("render-cable.png", (0.19, 0.27, 0.07), (0.055, 0.015, 0.035), "front-classic", False, walnut, "000001.jpg",
+         wall_on=False)
+
+    if only and "section" not in only:
+        return
+    world_of = lambda y, z: root.matrix_world @ Vector((p["PORT_X"], y, z))
+    # a 14 mm slice ending at the port: the cut face looks at the camera, front of the frame on
+    # the left, and the kickstand fins (further along X) drop out of the picture
+    cutters = [rounded_prism("cut-a", p["PORT_X"], -2000, 2000, 2000, 1.0, -2000, 2000),
+               rounded_prism("cut-b", -2000, -2000, p["PORT_X"] - 14, 2000, 1.0, -2000, 2000)]
+    for c in cutters:
+        c.parent, c.hide_render = root, True
+    for ob in (parts["front-classic"], parts["back"], kindle, plug, cable, floor):
+        for c in cutters:
+            mod = ob.modifiers.new(c.name, "BOOLEAN")
+            mod.operation, mod.solver, mod.object = "DIFFERENCE", "EXACT", c
+    sc.render.resolution_x, sc.render.resolution_y = 1600, 1000
+    sc.render.film_transparent = True
+    cam_d.type = "ORTHO"
+    cam_d.ortho_scale = 0.17
+    ys, zs = [y for y, _ in p["CABLE"]], [z for _, z in p["CABLE"]]
+    port = world_of(p["PORT_Y"], p["RAIL"])
+    # in the cutaway the plug and cable are the subject: mascot orange, so they stand off the
+    # black Kindle and the dark walnut
+    accent = _principled("cable-accent", (0.70, 0.22, 0.10), 0.5)
+    for ob in (plug, cable):
+        ob.data.materials.clear()
+        ob.data.materials.append(accent)
+    shot("render-section.png", (0.4, 0.045, 0.05), (port.x, 0.045, 0.05), "front-classic", False, walnut,
+         "000001.jpg", wall_on=False)
+    if only is None or "section" in only:
+        import subprocess
+        png = sc.render.filepath
+        subprocess.run(["magick", png, "-background", "white", "-flatten", png], check=True)
+        i_slot = min(range(len(ys)), key=lambda i: abs(ys[i] - (p["D"] - 1.5)))  # cable inside the back plate
+        font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "filmframe", "assets", "Inter-Regular.ttf")
+        on_shelf = lambda t: world_of(ys[-2] + t * (ys[-1] - ys[-2]), zs[-2] + t * (zs[-1] - zs[-2]))
+        annotate(png, cam, [
+            ("Kindle, cut through its USB port", world_of(p["PORT_Y"], p["RAIL"] + 32), (190, -30)),
+            (f"micro-USB plug, up to {p['PLUG_LEN']:.0f} mm long ({p['SPARE']:.1f} mm to spare)",
+             world_of(p["PORT_Y"], p["RAIL"] - p["PLUG_LEN"] / 2), (210, -20)),
+            ("cable leaves through the U-slot in the back", world_of(ys[i_slot], zs[i_slot]), (300, -150)),
+            ("then lies on the shelf, off to the charger", on_shelf(0.3), (60, -70)),
+        ], font)
+        print("annotated render-section.png")
