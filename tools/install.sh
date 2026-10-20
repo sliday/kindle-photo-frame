@@ -9,13 +9,15 @@ PHOTOS=${2:-}
 
 [ -d "$K/documents" ] && [ -d "$K/system" ] || { echo "no Kindle mounted at $K" >&2; exit 1; }
 [ -x "$ROOT/dist/filmframe" ] || "$ROOT/tools/build.sh"
-[ -d "$K/extensions" ] || echo "warning: $K/extensions missing; install KUAL before starting the frame" >&2
 
 EXT="$K/extensions/filmframe"
 mkdir -p "$EXT/bin" "$K/filmframe/photos"
 # -X: no extended attributes, so macOS doesn't litter the FAT drive with ._ files
 cp -X "$ROOT/kindle/extensions/filmframe/config.xml" "$ROOT/kindle/extensions/filmframe/menu.json" "$EXT/"
 cp -X "$ROOT"/kindle/extensions/filmframe/bin/*.sh "$ROOT/dist/filmframe" "$EXT/bin/"
+# scriptlets: after the jailbreak, .sh files in documents/ show up as tappable books
+cp -X "$ROOT"/kindle/documents/*.sh "$K/documents/"
+cp -X "$ROOT/kindle/filmframe/cover.png" "$K/filmframe/"
 if [ -f "$K/filmframe/filmframe.conf" ]; then
 	echo "kept existing $K/filmframe/filmframe.conf"
 else
@@ -34,6 +36,6 @@ if [ -n "$PHOTOS" ]; then
 	done
 	echo "copied $n new photos; $(ls "$K/filmframe/photos" | wc -l | tr -d ' ') on the Kindle"
 fi
-dot_clean -m "$K/extensions/filmframe" "$K/filmframe" 2>/dev/null || true
+dot_clean -m "$K/extensions/filmframe" "$K/filmframe" "$K/documents" 2>/dev/null || true
 sync
-echo "installed. Eject the Kindle, then KUAL > Film Frame > Start frame."
+echo "installed. Eject the Kindle, then tap Film Frame in the library."
