@@ -70,6 +70,14 @@ Wake-ups use both PW4 RTCs (`/sys/class/rtc/rtc{0,1}/wakealarm`, relative form) 
 
 `filmframe` is one static Go binary. `run.sh` pauses the stock UI the way KOReader does on firmware 5.x (pillow off, `awesome` and `volumd` frozen, a few services stopped, including the OTA updater) and restores all of it when the frame exits. The binary grabs the touchscreen exclusively, composites the overlay in memory, and dithers it to the panel's 16 gray levels with an ordered 8x8 pattern. The pattern depends only on pixel position, so pixels that did not change dither identically and each partial update leaves no seam. Only the changed rectangle goes to FBInk: the fade steps cover the top 585 rows, the rule steps a 2-pixel strip. Weather comes from Open-Meteo (no key); the server's Date header also corrects a drifted Kindle clock.
 
+## Frame stand (3D print)
+
+`frame/` holds a printable stand shaped like the Claude Code bot: arms beside the photo, four legs as feet, the charger room between the middle legs. The wood covers the Kindle's black front except a 2.5 mm line (or a paper mat in the `mat` version). Print files, renders and notes for the printer are in `frame/print/` and [frame/PRINTING.md](frame/PRINTING.md). Rebuild after changing a number in `frame/build_frame.py`:
+
+```sh
+cd frame && blender -b -P build_frame.py -- print --render
+```
+
 ## Licenses
 
 Inter typeface: SIL Open Font License (`filmframe/assets/Inter-LICENSE.txt`). Weather icons: Lucide, ISC.
