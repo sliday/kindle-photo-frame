@@ -1,5 +1,7 @@
 """Printability check for the frame STLs (watertight, single body, winding) and one 3MF per part.
-Run: uv run --with trimesh --with networkx --with lxml --with scipy python check_print.py print/"""
+Zero-volume slivers that an exact boolean can leave behind are dropped first, and the STL is
+rewritten without them. Run:
+  uv run --with trimesh --with networkx --with lxml --with scipy python check_print.py print/"""
 import sys
 
 import trimesh
@@ -9,6 +11,12 @@ names = ["front-classic", "front-mat", "mat", "back"]
 meshes = {}
 for n in names:
     m = trimesh.load_mesh(f"{out}/{n}.stl")
+    bodies = m.split(only_watertight=False)
+    solid = [b for b in bodies if abs(b.volume) > 1.0]
+    if len(solid) < len(bodies):
+        m = trimesh.util.concatenate(solid)
+        m.export(f"{out}/{n}.stl")
+        print(f"{n}: dropped {len(bodies) - len(solid)} zero-volume sliver(s), STL rewritten")
     meshes[n] = m
     base = m.vertices[:, 2].min()
     on_bed = m.area_faces[(abs(m.triangles[:, :, 2] - base) < 1e-3).all(axis=1)].sum()

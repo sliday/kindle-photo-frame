@@ -1,6 +1,6 @@
 # Film Frame stand: print notes
 
-A standing frame for a **Kindle Paperwhite 4 (10th gen, 2018, model PQ94WIF)**, in dark walnut. It hides the Kindle's black front except a thin black line around the image, leans back 10° on two fins, and has a charger route built in: the cable plugs in under the Kindle and leaves through a slot in the back.
+A standing frame for a **Kindle Paperwhite 4 (10th gen, 2018, model PQ94WIF)**, in dark walnut. It hides the Kindle's black front except a thin black line around the image, leans back 10° on two fins, and hides the charger: the cable runs down inside one leg and leaves through the back of its foot.
 
 ![front](print/render-walnut.png)
 
@@ -35,20 +35,21 @@ STL and 3MF files are equivalent (millimetres), and each is laid flat in its pri
 ![how the cable runs](print/render-section.png)
 
 1. Lay the front face down. Put the Kindle in screen down, its bottom edge (with the USB port) toward the legs.
-2. **Plug the cable in now**, while the back is off. The plug points down into the space between the two middle legs.
-3. Lay the cable through the **U-slot in the back plate**, which sits right behind the port, and put the back on. Screw it down gently; the screws only hold the Kindle against the front.
-4. Stand the frame up. The cable leaves through the slot and lies flat on the shelf behind the frame, between the two fins, out to the charger.
+2. **Plug the cable in now**, while the back is off. The plug points down into the hollow **left inner leg** (seen from the front), which sits right under the port.
+3. Run the cable down that leg's channel and out through the **small slot at the back of its foot**. Put the back on and screw it down gently; the screws only hold the Kindle against the front.
+4. Stand the frame up. From the front nothing shows: the cable leaves behind the leg and lies on the shelf, out to the charger.
 
 ![cable from behind](print/render-cable.png)
 
-The power button (on the Kindle's bottom edge, about 70 mm from its left side) stays reachable: reach in from the front through the gap between the middle legs and press up.
+**Power button:** it sits on the Kindle's bottom edge above the right inner leg. A pocket in the rail keeps the Kindle's weight off it (the button sticks out 0.6 mm). To press it, tilt the frame back and push a pen up through the 5 mm hole in the bottom of that leg. The frame never sleeps, so you'll rarely need it.
 
 ## Where the numbers come from
 
 - Kindle body: Amazon's spec (167 × 116 × 8.18 mm) and a measured, public-domain STEP model (Printables #1061750, 116.7 mm wide).
 - Screen image: 90.6 × 122.4 mm (E Ink 6" 1072 × 1448 panel datasheets), centred left-right; its bottom edge sits 24.4 mm above the Kindle's bottom edge (STEP model).
 - Micro-USB at 46.35 mm and power button at 70.35 mm from the Kindle's left edge (STEP model).
-- Leg height: a 25 mm straight plug, a 12 mm cable bend and the 10° lean leave 3.5 mm above the shelf. `build_frame.py` checks this on every build and stops if a change breaks it.
+- Leg layout: the micro-USB port and power button sit mirrored, 12 mm either side of the Kindle's centre, so the two inner legs sit right under them and the bot stays symmetric.
+- Leg height: a 25 mm straight plug, a 10 mm cable bend and the 10° lean leave 5.9 mm above the shelf. `build_frame.py` checks this on every build and stops if a change breaks it.
 
 Want to check the window before printing it all? In the slicer, stop the front after 3 mm (about 15 minutes), lay it over the Kindle, and look at the black line. Every number lives at the top of `build_frame.py`:
 

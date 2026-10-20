@@ -322,7 +322,7 @@ def render(parts, out, p, quick=False, only=None):
             ("Kindle, cut through its USB port", world_of(p["PORT_Y"], p["RAIL"] + 32), (190, -30)),
             (f"micro-USB plug, up to {p['PLUG_LEN']:.0f} mm long ({p['SPARE']:.1f} mm to spare)",
              world_of(p["PORT_Y"], p["RAIL"] - p["PLUG_LEN"] / 2), (210, -20)),
-            ("cable leaves through the U-slot in the back", world_of(ys[i_slot], zs[i_slot]), (300, -150)),
+            ("runs down inside the leg, out the back of its foot", world_of(ys[i_slot], zs[i_slot]), (300, -150)),
             ("then lies on the shelf, off to the charger", on_shelf(0.3), (60, -70)),
         ], font)
         print("annotated render-section.png")

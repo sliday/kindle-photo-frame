@@ -35,12 +35,17 @@ POCKET_D = 8.5                                # Kindle 8.18 + play
 FRONT_T, BACK_T = 2.4, 3.0                    # plate thicknesses
 WALL_SIDE, WALL_TOP = 8.0, 3.0
 RAIL = 10.0                                   # solid rail under the Kindle
-# legs below the body: room for a 25 mm straight micro-USB plug whose cable bends back
-# (12 mm radius) and still clears the shelf with the 10 degree lean (Codex consult)
-LEG_H = 36.0
-CABLE_SLOT_W = 16.0                           # back-plate exit, centred behind the micro-USB port
-PLUG_LEN, CABLE_BEND_R, CABLE_D = 25.0, 12.0, 4.0  # worst-case straight plug, for the clearance check
-LEG_FRAC = [(0.0, 0.116), (0.221, 0.337), (0.663, 0.779), (0.884, 1.0)]  # from the bot's proportions
+# Legs. The cable hides inside the leg under the micro-USB port: the plug and cable drop down a
+# channel closed at the front and leave through the back of that leg's foot (the owner's pick).
+# The port and power button sit mirrored, 12 mm either side of the Kindle's centre, so:
+#   mirror: inner legs under the port and under the button (symmetric; button pressed with a pen)
+#   walk:   only the cable leg moves; the other inner leg keeps the bot's position, button in the gap
+LEG_LAYOUT = next((a.split("=", 1)[1] for a in ARGS if a.startswith("--legs=")), "mirror")
+LEG_H, LEG_W = 36.0, 16.0
+CABLE_LEG_HALF = 6.0                          # channel inside the leg: 12 mm wide, 2 mm walls
+CABLE_EXIT_W, CABLE_EXIT_H = 7.0, 12.0        # slot at the back of the foot
+PLUG_LEN, CABLE_BEND_R, CABLE_D = 25.0, 10.0, 4.0  # worst-case straight plug, for the clearance check
+BUTTON_POCKET, PEN_HOLE = 2.5, 5.0            # the button sticks out 0.6 mm: keep it off the rail
 ARM_OUT = 9.0
 ARM_FRAC = (0.58, 0.75)                       # arm span as a share of body height, from the bottom
 BORDER = 2.5                                  # black line left visible around the image (max 5)
@@ -66,11 +71,18 @@ SZ0 = KZ0 + BEZEL_BOTTOM                      # the Kindle stands on the rail, s
 SZ1 = SZ0 + SCREEN_H
 D_A = FRONT_T + POCKET_D
 D = D_A + BACK_T
-LEGS = [(a * W, b * W) for a, b in LEG_FRAC]
-MOUTH = (LEGS[1][1], LEGS[2][0])              # opening between the middle legs
+PX, BX = KX0 + PORT_X, KX0 + BUTTON_X          # port and button in frame coordinates
+if LEG_LAYOUT == "mirror":
+    _inner = [(PX - LEG_W / 2, PX + LEG_W / 2), (BX - LEG_W / 2, BX + LEG_W / 2)]
+elif LEG_LAYOUT == "walk":
+    _inner = [(PX - LEG_W / 2, PX + LEG_W / 2), (0.663 * W, 0.663 * W + LEG_W)]
+else:
+    raise SystemExit(f"--legs must be mirror or walk, not {LEG_LAYOUT}")
+LEGS = [(0.0, LEG_W)] + _inner + [(W - LEG_W, W)]
 ARM_Z = (ARM_FRAC[0] * H, ARM_FRAC[1] * H)
-for _name, _x, _half in (("micro-USB", PORT_X, 4.0), ("power button", BUTTON_X, 2.8)):
-    assert MOUTH[0] + 2 < KX0 + _x - _half and KX0 + _x + _half < MOUTH[1] - 2, f"{_name} not reachable"
+assert all(b - a > 4 for (_, a), (b, _) in zip(LEGS, LEGS[1:])), "legs overlap"
+assert LEG_W / 2 - CABLE_LEG_HALF >= 1.6, "cable leg walls too thin"
+assert CABLE_LEG_HALF >= 5.25 + 0.5, "plug does not fit the cable channel"
 
 
 # ---------------------------------------------------------------- 2D outline helpers
@@ -263,8 +275,13 @@ def make_front(name, with_mat):
     cut = [loft("window", [(-1.0, rounded(win, -(WINDOW_BEVEL + 1.0))),
                            (WINDOW_BEVEL, rounded(win)), (D_A + 1, rounded(win))])]
     cut.append(box("pocket", WALL_SIDE, FRONT_T, RAIL, W - WALL_SIDE, D_A + 1, POCKET_Z1, 6.5))
-    # charger room behind the bottom rail, open to the back and to the gap between the legs
-    cut.append(box("cavity", MOUTH[0], FRONT_T, -LEG_H - 12, MOUTH[1], D_A + 1, RAIL + 0.5, 2.0))
+    # cable channel down the leg under the port: closed at the front, open to the back plate
+    cut.append(box("cable-channel", PX - CABLE_LEG_HALF, FRONT_T, -LEG_H - 12, PX + CABLE_LEG_HALF, D_A + 1,
+                   RAIL + 0.5, 2.0))
+    # a pocket keeps the Kindle's weight off its power button; a pen hole from below presses it
+    cut.append(box("button-pocket", BX - 4.5, FRONT_T, RAIL - BUTTON_POCKET, BX + 4.5, D_A + 1, RAIL + 0.5, 1.0))
+    cut.append(box("pen-hole", BX - PEN_HOLE / 2, PORT_Y - PEN_HOLE / 2, -LEG_H - 12, BX + PEN_HOLE / 2,
+                   PORT_Y + PEN_HOLE / 2, RAIL - 1, 0.0))
     if with_mat:
         mo = mat_outer()
         cut.append(box("rebate", mo[0] - 0.3, FRONT_T - MAT_T, mo[1] - 0.3, mo[2] + 0.3, FRONT_T + 0.5, mo[3] + 0.3, 1.5))
@@ -294,11 +311,11 @@ def make_mat(name):
 
 def make_back(name):
     ob = loft(name, body_rings(D_A, D, False, True))
-    # kickstand fins behind the middle legs, bottoms on the shelf plane
+    # kickstand fins behind the outer legs (clear of the screw heads), bottoms on the shelf plane;
+    # the cable leaves between them, behind its own leg
     y_tip = (FIN_REACH + LEG_H * math.sin(LEAN)) * math.cos(LEAN)
     fins = []
-    for lx0, lx1 in (LEGS[1], LEGS[2]):
-        cx = (lx0 + lx1) / 2
+    for cx in (11.0, W - 11.0):
         y0 = D - 0.5
         prof = [(y0, floor_z(y0)), (y_tip, floor_z(y_tip)), (y_tip, floor_z(y_tip) + 3.0), (y0, FIN_TOP_Z)]
         bm = bmesh.new()
@@ -316,10 +333,9 @@ def make_back(name):
         bpy.context.scene.collection.objects.link(fo)
         fins.append(fo)
     apply_boolean(ob, fins, "UNION")
-    # U-slot straight behind the port: the one obvious way out for the cable
-    px = KX0 + PORT_X
-    cut = [box("cable-slot", px - CABLE_SLOT_W / 2, D_A - 1, -LEG_H - 12, px + CABLE_SLOT_W / 2, D + 1,
-               RAIL + 0.5, CABLE_SLOT_W / 2 - 0.05)]
+    # the cable's exit: a small U-slot at the back of the cable leg's foot
+    cut = [box("cable-exit", PX - CABLE_EXIT_W / 2, D_A - 1, -LEG_H - 12, PX + CABLE_EXIT_W / 2, D + 1,
+               -LEG_H + CABLE_EXIT_H, CABLE_EXIT_W / 2 - 0.05)]
     for x in (WALL_SIDE / 2, W - WALL_SIDE / 2):
         for z in SCREW_Z:
             cut.append(cylinder_y("clear", x, z, SCREW_CLEAR / 2, D_A - 1, D + 1))
@@ -378,9 +394,10 @@ with open(os.path.join(OUT, "dimensions.txt"), "w") as f:
     f.write(f"image window (classic) {SCREEN_W + 2*BORDER:.1f} x {SCREEN_H + 2*BORDER:.1f}, black line {BORDER} mm\n")
     f.write(f"Kindle pocket {K_W + 2*CLEAR_SIDE:.1f} x {K_H + CLEAR_TOP:.1f} x {POCKET_D}\n")
     f.write(f"image bottom edge sits {BEZEL_BOTTOM} mm above the Kindle's bottom edge (STEP model)\n")
-    f.write(f"charger room under the Kindle: {MOUTH[1]-MOUTH[0]:.1f} wide x {RAIL + LEG_H:.1f} tall, "
-            f"micro-USB at {KX0 + PORT_X:.1f}, power button at {KX0 + BUTTON_X:.1f} (opening {MOUTH[0]:.1f}..{MOUTH[1]:.1f})\n")
-    f.write(f"cable: exits through a {CABLE_SLOT_W:.0f} mm U-slot in the back plate behind the port; a {PLUG_LEN:.0f} mm "
+    f.write(f"legs ({LEG_LAYOUT}): {', '.join(f'{a:.1f}..{b:.1f}' for a, b in LEGS)}; micro-USB at {PX:.1f}, "
+            f"power button at {BX:.1f} (pocket {BUTTON_POCKET} mm deep, {PEN_HOLE:.0f} mm pen hole from below)\n")
+    f.write(f"cable: runs down a {2*CABLE_LEG_HALF:.0f} mm channel inside the leg under the port and leaves through "
+            f"a {CABLE_EXIT_W:.0f} x {CABLE_EXIT_H:.0f} mm slot at the back of its foot; a {PLUG_LEN:.0f} mm "
             f"straight plug with a {CABLE_BEND_R:.0f} mm bend has {_spare:.1f} mm to spare above the shelf\n")
 
 bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "film-frame.blend"))
@@ -391,6 +408,6 @@ if RENDER:
     render_frame.render(parts, OUT, dict(W=W, H=H, D=D, D_A=D_A, FRONT_T=FRONT_T, KX0=KX0, KZ0=KZ0,
                                          K_W=K_W, K_H=K_H, K_D=K_D, SX0=SX0, SZ0=SZ0, SCREEN_W=SCREEN_W,
                                          SCREEN_H=SCREEN_H, LEG_H=LEG_H, LEAN=LEAN, RAIL=RAIL,
-                                         PORT_X=KX0 + PORT_X, PORT_Y=PORT_Y, PLUG_LEN=PLUG_LEN,
+                                         PORT_X=PX, PORT_Y=PORT_Y, PLUG_LEN=PLUG_LEN,
                                          CABLE_D=CABLE_D, CABLE=cable_path()[0], SPARE=_spare),
                         quick="--quick" in ARGS, only=only)

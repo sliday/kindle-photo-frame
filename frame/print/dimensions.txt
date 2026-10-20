@@ -3,5 +3,5 @@ depth 13.9 (front 10.9 + back 3.0); fins reach 55 behind the feet
 image window (classic) 95.6 x 127.4, black line 2.5 mm
 Kindle pocket 117.5 x 167.8 x 8.5
 image bottom edge sits 24.4 mm above the Kindle's bottom edge (STEP model)
-charger room under the Kindle: 43.5 wide x 46.0 tall, micro-USB at 54.8, power button at 78.8 (opening 45.0..88.5)
-cable: exits through a 16 mm U-slot in the back plate behind the port; a 25 mm straight plug with a 12 mm bend has 3.5 mm to spare above the shelf
+legs (mirror): 0.0..16.0, 46.8..62.8, 70.8..86.8, 117.5..133.5; micro-USB at 54.8, power button at 78.8 (pocket 2.5 mm deep, 5 mm pen hole from below)
+cable: runs down a 12 mm channel inside the leg under the port and leaves through a 7 x 12 mm slot at the back of its foot; a 25 mm straight plug with a 10 mm bend has 5.9 mm to spare above the shelf
