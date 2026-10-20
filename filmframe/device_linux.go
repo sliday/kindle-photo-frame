@@ -4,20 +4,27 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 )
 
-// Step pacing: each fade step stays on screen at least this long.
-const minStep = 220 * time.Millisecond
+const (
+	// Step pacing: each fade step stays on screen at least this long.
+	minStep = 220 * time.Millisecond
+	// At this charge on battery the frame shows a note and sleeps until the power button.
+	lowBatteryPercent = 4
+)
 
 // runDevice is the frame's main loop on the Kindle. The launcher (run.sh) has already paused
 // the stock UI and restores it after we return, whatever the reason.
+//
+// Deadlines are wall-clock times (see wallNow): in sleep mode the Kindle suspends between
+// photos, and Go's monotonic timers don't count that time.
 func runDevice(cfg Config) error {
 	log.Printf("filmframe %s starting", version)
 	sigs := make(chan os.Signal, 1)
@@ -67,14 +74,21 @@ func runDevice(cfg Config) error {
 	}
 	defer preventScreenSaver(false)
 	if cfg.Frontlight >= 0 {
+		was := frontlight()
 		_ = setFrontlight(cfg.Frontlight)
+		if was >= 0 {
+			defer setFrontlight(was)
+		}
 	}
 	wifiWasOn := wifiEnabled()
 	defer func() {
-		if cfg.WifiPowerSave && wifiEnabled() != wifiWasOn {
+		if wifiEnabled() != wifiWasOn {
 			wifiSet(wifiWasOn)
 		}
 	}()
+	sl := NewSleeper()
+	log.Printf("power: mode %s, external power %v, battery %d%%, rtc %s",
+		cfg.PowerMode, onExternalPower(), batteryPercent(), sl.Describe())
 
 	show := func(path string) bool {
 		for tries := 0; tries < 5; tries++ {
@@ -83,7 +97,7 @@ func runDevice(cfg Config) error {
 				if err := fr.SetPhoto(img); err != nil {
 					log.Printf("display: %v", err)
 				}
-				log.Printf("photo %s (battery %s%%)", path, battery())
+				log.Printf("photo %s (battery %d%%, external power %v)", path, batteryPercent(), onExternalPower())
 				return true
 			}
 			log.Printf("skip %s: %v", path, err)
@@ -98,16 +112,25 @@ func runDevice(cfg Config) error {
 	weather := loadWeather(cfg.StateDir)
 	weatherDone := make(chan Weather, 1)
 	fetching := false
-	firstFetch := 5 * time.Second
-	if age := time.Since(weather.Fetched); age < cfg.WeatherEvery {
-		firstFetch = cfg.WeatherEvery - age
+
+	now := wallNow()
+	var nextPhoto, nextWeather, holdUntil, ignorePowerUntil time.Time
+	if cfg.PhotoInterval > 0 {
+		nextPhoto = now.Add(cfg.PhotoInterval)
 	}
-	weatherTimer := time.NewTimer(firstFetch)
+	nextWeather = weather.Fetched.Round(0).Add(cfg.WeatherEvery)
+	if nextWeather.Before(now.Add(5 * time.Second)) {
+		nextWeather = now.Add(5 * time.Second)
+	}
+	awakeUntil := now.Add(cfg.AwakeAfter)
+	refusals := 0
+
 	fetch := func() {
 		if fetching {
 			return
 		}
 		fetching = true
+		nextWeather = time.Time{} // set again when the result arrives
 		go func() {
 			w, err := fetchWeatherOnline(cfg)
 			if err != nil {
@@ -117,17 +140,8 @@ func runDevice(cfg Config) error {
 		}()
 	}
 
-	photoTimer := time.NewTimer(cfg.PhotoInterval)
-	if cfg.PhotoInterval <= 0 {
-		photoTimer.Stop()
-	}
-	resetPhotoTimer := func() {
-		if cfg.PhotoInterval > 0 {
-			photoTimer.Reset(cfg.PhotoInterval)
-		}
-	}
-	holdTimer := time.NewTimer(time.Hour)
-	holdTimer.Stop()
+	timer := time.NewTimer(time.Hour)
+	defer timer.Stop()
 	g := &Gestures{LongPress: cfg.LongPress}
 	// the ticker runs only while a finger is down or the overlay is up, so an idle frame sleeps
 	tick := time.NewTicker(250 * time.Millisecond)
@@ -151,8 +165,8 @@ func runDevice(cfg Config) error {
 		if cfg.Clock12h {
 			clock = now.Format("3:04")
 		}
-		if weather.Fetched.IsZero() || time.Since(weather.Fetched) > weatherStale {
-			return OverlayInfo{Clock: clock, Line: strings.ToLower(now.Format("Monday, 2 January"))}
+		if weather.Fetched.IsZero() || time.Since(weather.Fetched.Round(0)) > weatherStale {
+			return OverlayInfo{Clock: clock, Line: now.Format("Monday, 2 January")}
 		}
 		return OverlayInfo{Clock: clock, Line: weatherLine(weather.TempC, weather.Code, cfg.Fahrenheit),
 			Icon: wmoIcon(weather.Code, weather.IsDay)}
@@ -170,20 +184,22 @@ func runDevice(cfg Config) error {
 		if err := fr.ShowOverlay(info(), minStep); err != nil {
 			log.Printf("overlay: %v", err)
 		}
-		holdTimer.Reset(cfg.Hold)
+		holdUntil = wallNow().Add(cfg.Hold)
 		drain()
 	}
 	hideOverlay := func() {
-		holdTimer.Stop()
+		holdUntil = time.Time{}
 		if err := fr.HideOverlay(minStep); err != nil {
 			log.Printf("overlay: %v", err)
 		}
 		drain()
 	}
 	changePhoto := func(path string) {
-		holdTimer.Stop()
+		holdUntil = time.Time{}
 		show(path)
-		resetPhotoTimer()
+		if cfg.PhotoInterval > 0 {
+			nextPhoto = wallNow().Add(cfg.PhotoInterval)
+		}
 		drain()
 	}
 	act := func(gs Gesture) bool {
@@ -205,22 +221,141 @@ func runDevice(cfg Config) error {
 		return true
 	}
 
+	// woke handles the moments right after a suspend ends. Timing alone can't tell a press
+	// near the alarm from the alarm, so a power key event right after resume wins.
+	woke := func(timed bool, slept time.Duration) {
+		select {
+		case <-power:
+			timed = false
+		case <-time.After(400 * time.Millisecond):
+		}
+		now := wallNow()
+		if timed {
+			log.Printf("woke by alarm after %v", slept.Round(time.Second))
+			awakeUntil = now // do the scheduled work, then sleep again
+			return
+		}
+		log.Printf("woke by button after %v", slept.Round(time.Second))
+		awakeUntil = now.Add(cfg.AwakeAfter)
+		// the press that woke us may still arrive as an event; don't let it hide the clock
+		ignorePowerUntil = now.Add(2 * time.Second)
+		for len(power) > 0 {
+			<-power
+		}
+		drain()
+		showOverlay()
+	}
+	suspend := func() {
+		if wifiEnabled() {
+			wifiSet(false)
+		}
+		start := wallNow()
+		if !nextPhoto.IsZero() {
+			log.Printf("sleeping until %s", nextPhoto.In(loc).Format("15:04:05"))
+		} else {
+			log.Printf("sleeping until the power button")
+		}
+		timed, err := sl.SuspendUntil(nextPhoto)
+		switch {
+		case errors.Is(err, errTooSoon):
+			awakeUntil = nextPhoto
+		case err != nil:
+			refusals++
+			log.Printf("suspend failed (%d in a row): %v", refusals, err)
+			awakeUntil = wallNow().Add(refusalBackoff(refusals))
+		default:
+			refusals = 0
+			woke(timed, wallNow().Sub(start))
+		}
+	}
+	lowBattery := func(p int) {
+		log.Printf("battery %d%% on battery power: charge note, then sleep until the power button", p)
+		if fr.visible {
+			hideOverlay()
+		}
+		if err := fr.ShowOverlay(OverlayInfo{Clock: fmt.Sprintf("%d%%", p), Line: "Battery low · Please charge"}, minStep); err != nil {
+			log.Printf("overlay: %v", err)
+		}
+		if wifiEnabled() {
+			wifiSet(false)
+		}
+		start := wallNow()
+		if _, err := sl.SuspendUntil(time.Time{}); err != nil {
+			log.Printf("suspend failed: %v", err)
+			awakeUntil = wallNow().Add(5 * time.Minute)
+			return
+		}
+		log.Printf("woke after %v", wallNow().Sub(start).Round(time.Second))
+		for len(power) > 0 {
+			<-power
+		}
+		ignorePowerUntil = wallNow().Add(2 * time.Second)
+		awakeUntil = wallNow().Add(cfg.AwakeAfter)
+		hideOverlay()
+	}
+
 	for {
+		// work that is due, in order: the overlay's hold, the photo, the weather
+		now := wallNow()
+		if due(holdUntil, now) {
+			hideOverlay()
+		}
+		if due(nextPhoto, now) {
+			if fr.visible {
+				nextPhoto = now.Add(10 * time.Second)
+			} else {
+				changePhoto(pl.Next())
+			}
+		}
+		if due(nextWeather, now) {
+			fetch()
+		}
+
+		// then sleep, if this power mode wants it and nothing is in flight
+		now = wallNow()
+		sleepy := wantSleep(cfg.PowerMode, onExternalPower())
+		// queued input first: a press or touch made during a fade must not be slept through.
+		// Weather never wakes the Kindle by itself; it refreshes on photo and button wakes.
+		idle := !fr.visible && !g.down && !fetching && len(power) == 0 && len(touches) == 0
+		if sleepy && due(awakeUntil, now) && idle {
+			if p := batteryPercent(); p >= 0 && p <= lowBatteryPercent && batteryPercent() <= lowBatteryPercent {
+				lowBattery(p)
+			} else {
+				suspend()
+			}
+			continue
+		}
+
 		syncTick()
+		next := earliest(nextPhoto, nextWeather, holdUntil)
+		if sleepy {
+			next = earliest(next, future(awakeUntil, now))
+		}
+		wait := time.Hour
+		if !next.IsZero() {
+			wait = max(0, min(time.Hour, next.Sub(now)))
+		}
+		timer.Reset(wait)
+
 		select {
 		case s := <-sigs:
 			log.Printf("signal %v: leaving", s)
 			return nil
 		case t := <-touches:
+			awakeUntil = wallNow().Add(cfg.AwakeAfter)
 			if !act(g.Feed(t)) {
 				return nil
 			}
 		case <-power:
+			if wallNow().Before(ignorePowerUntil) {
+				continue
+			}
+			awakeUntil = wallNow().Add(cfg.AwakeAfter)
 			if !act(Tap) {
 				return nil
 			}
-		case now := <-tick.C:
-			if !act(g.Poll(now)) {
+		case t := <-tick.C:
+			if !act(g.Poll(t)) {
 				return nil
 			}
 			if fr.visible {
@@ -228,27 +363,24 @@ func runDevice(cfg Config) error {
 					log.Printf("overlay: %v", err)
 				}
 			}
-		case <-holdTimer.C:
-			hideOverlay()
-		case <-photoTimer.C:
-			if fr.visible {
-				photoTimer.Reset(10 * time.Second)
-				continue
-			}
-			changePhoto(pl.Next())
-		case <-weatherTimer.C:
-			fetch()
 		case w := <-weatherDone:
 			fetching = false
 			if w.Fetched.IsZero() {
-				weatherTimer.Reset(5 * time.Minute)
+				nextWeather = wallNow().Add(5 * time.Minute)
 				continue
 			}
 			weather = w
 			if err := saveWeather(cfg.StateDir, w); err != nil {
 				log.Printf("save weather: %v", err)
 			}
-			weatherTimer.Reset(cfg.WeatherEvery)
+			nextWeather = wallNow().Add(cfg.WeatherEvery)
+			if fr.visible {
+				if err := fr.UpdateOverlay(info()); err != nil {
+					log.Printf("overlay: %v", err)
+				}
+			}
+		case <-timer.C:
+			// the loop's top runs whatever came due
 		}
 	}
 }

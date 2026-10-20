@@ -64,8 +64,6 @@ func setFrontlight(level int) error {
 	return lipcSet("com.lab126.powerd", "flIntensity", strconv.Itoa(level))
 }
 
-func battery() string { return lipcGet("com.lab126.powerd", "battLevel") }
-
 // setClock moves the system clock (UTC) and the RTC. KOReader uses Amazon's setdate.
 func setClock(t time.Time) error {
 	if _, err := os.Stat("/usr/sbin/setdate"); err == nil {

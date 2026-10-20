@@ -4,6 +4,7 @@ import (
 	"image"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -145,15 +146,46 @@ func TestGestures(t *testing.T) {
 	}
 }
 
+func TestScheduleHelpers(t *testing.T) {
+	now := wallNow()
+	a, b := now.Add(time.Minute), now.Add(time.Hour)
+	if got := earliest(time.Time{}, b, a, time.Time{}); !got.Equal(a) {
+		t.Fatalf("earliest = %v", got)
+	}
+	if !earliest().IsZero() || !earliest(time.Time{}).IsZero() {
+		t.Fatal("earliest of nothing should be zero")
+	}
+	if due(time.Time{}, now) || due(a, now) || !due(now.Add(-time.Second), now) {
+		t.Fatal("due")
+	}
+	if !future(now.Add(-time.Second), now).IsZero() || !future(a, now).Equal(a) {
+		t.Fatal("future")
+	}
+	if !wantSleep("auto", false) || wantSleep("auto", true) || !wantSleep("sleep", true) || wantSleep("awake", false) {
+		t.Fatal("wantSleep")
+	}
+	if refusalBackoff(1) >= refusalBackoff(3) {
+		t.Fatal("backoff should grow")
+	}
+	// wall time carries no monotonic reading, so it stays right across a suspend
+	if s := wallNow().String(); strings.Contains(s, "m=") {
+		t.Fatalf("monotonic reading left in %s", s)
+	}
+}
+
 func TestConfigParses(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "c.conf")
-	os.WriteFile(p, []byte("# comment\norder = random\nphoto_minutes = 45 # inline\nhold_seconds=7.5\nunits = f\nclock = 12h\n"), 0o644)
+	os.WriteFile(p, []byte("# comment\norder = random\nphoto_minutes = 45 # inline\nhold_seconds=7.5\nunits = f\nclock = 12h\npower_mode = sleep\nawake_seconds = 90\n"), 0o644)
 	c, err := LoadConfig(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Order != "random" || c.PhotoInterval != 45*time.Minute || c.Hold != 7500*time.Millisecond || !c.Fahrenheit || !c.Clock12h {
+	if c.Order != "random" || c.PhotoInterval != 45*time.Minute || c.Hold != 7500*time.Millisecond || !c.Fahrenheit || !c.Clock12h ||
+		c.PowerMode != "sleep" || c.AwakeAfter != 90*time.Second {
 		t.Fatalf("%+v", c)
+	}
+	if d := DefaultConfig(); d.PowerMode != "auto" || d.AwakeAfter != time.Minute {
+		t.Fatalf("defaults %+v", d)
 	}
 	os.WriteFile(p, []byte("order = sideways\n"), 0o644)
 	if _, err := LoadConfig(p); err == nil {
@@ -162,10 +194,10 @@ func TestConfigParses(t *testing.T) {
 }
 
 func TestWeatherLine(t *testing.T) {
-	if got := weatherLine(11.6, 2, false); got != "12°C · partly cloudy" {
+	if got := weatherLine(11.6, 2, false); got != "12°C · Partly cloudy" {
 		t.Fatalf("got %q", got)
 	}
-	if got := weatherLine(-0.4, 71, false); got != "0°C · light snow" {
+	if got := weatherLine(-0.4, 71, false); got != "0°C · Light snow" {
 		t.Fatalf("got %q", got)
 	}
 	if wmoIcon(2, true) != "cloud-sun" || wmoIcon(0, false) != "moon" || wmoIcon(95, true) != "cloud-lightning" {

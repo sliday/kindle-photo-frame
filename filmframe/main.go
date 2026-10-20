@@ -24,7 +24,7 @@ func main() {
 	preview := flag.String("preview", "", "render the touch sequence into this directory and exit")
 	photo := flag.String("photo", "", "photo for -preview")
 	at := flag.String("at", "18:42", "clock text for -preview")
-	line := flag.String("line", "12°C · partly cloudy", "weather line for -preview")
+	line := flag.String("line", "12°C · Partly cloudy", "weather line for -preview")
 	icon := flag.String("icon", "cloud", "icon for -preview")
 	showVersion := flag.Bool("version", false, "print version")
 	flag.Parse()

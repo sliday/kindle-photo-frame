@@ -32,6 +32,8 @@ type Config struct {
 	TouchMirrorX  bool
 	TouchMirrorY  bool
 	LongPress     time.Duration
+	PowerMode     string        // auto | sleep | awake
+	AwakeAfter    time.Duration // in sleep mode: stay awake this long after a wake or touch
 }
 
 func DefaultConfig() Config {
@@ -52,6 +54,8 @@ func DefaultConfig() Config {
 		FadeWaveform:  "GC16",
 		TouchDevice:   "auto",
 		LongPress:     3 * time.Second,
+		PowerMode:     "auto",
+		AwakeAfter:    time.Minute,
 	}
 }
 
@@ -139,6 +143,17 @@ func (c *Config) set(k, v string) error {
 		var s float64
 		s, err = strconv.ParseFloat(v, 64)
 		c.LongPress = time.Duration(s * float64(time.Second))
+	case "power_mode":
+		switch v {
+		case "auto", "sleep", "awake":
+			c.PowerMode = v
+		default:
+			return fmt.Errorf("want auto, sleep or awake, got %q", v)
+		}
+	case "awake_seconds":
+		var s float64
+		s, err = strconv.ParseFloat(v, 64)
+		c.AwakeAfter = time.Duration(s * float64(time.Second))
 	default:
 		fmt.Fprintf(os.Stderr, "config: unknown key %q ignored\n", k)
 	}

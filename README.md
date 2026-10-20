@@ -12,8 +12,10 @@ A Kindle Paperwhite 4 (10th gen, 2018) as an e-ink frame for film scans. The scr
 |---|---|
 | Tap | show the clock and weather; tap again to hide early |
 | Swipe left / right | next / previous photo |
-| Power button | same as a tap |
+| Power button | wake a sleeping frame and show the clock; when awake, same as a tap |
 | Hold a finger still for 3 s | leave the frame, back to the Kindle Home screen |
+
+On battery the frame sleeps between photos, so press the power button first, then tap or swipe.
 
 Photos change every 30 minutes in shuffle order: each one once, in random order, then a new shuffle. The position survives restarts. Set `order = random` or `order = name` in the config to change that.
 
@@ -54,7 +56,15 @@ cd filmframe && go run . -config /dev/null -preview /tmp/pv -photo ~/Downloads/f
 
 ## Battery
 
-The panel draws power only while it changes, but the Kindle stays awake to catch taps. Wi-Fi comes on only for the half-hourly weather fetch (`wifi_power_save = true`). Expect days on battery rather than weeks; the log records the battery level at each photo change so you can measure it. For a frame that never needs charging, leave it on a USB charger.
+E-ink holds an image with no power, so the frame sleeps between photos (`power_mode = auto`):
+
+- **On battery** it draws a photo, arms the RTC alarm for the next change and suspends to RAM. The photo stays on screen. The alarm wakes it, it draws the next photo and sleeps again. Weather refreshes on those wakes, at most hourly.
+- **Press the power button** to wake it: the clock and weather show at once, taps and swipes work for a minute, then it sleeps again. Taps alone can't wake a sleeping Kindle.
+- **On a charger** (or the Mac's cable) it stays awake, so taps work instantly.
+- At 4% it shows "Battery low · Please charge" and sleeps until the power button.
+- The front light is off while the frame runs; your own level returns when you leave.
+
+Wake-ups use both PW4 RTCs (`/sys/class/rtc/rtc{0,1}/wakealarm`, relative form) and `mem` into `/sys/power/state`. Every photo change logs the battery level, so the drain rate shows up in `filmframe.log`. `power_mode = awake` restores the always-awake behaviour.
 
 ## How it works
 

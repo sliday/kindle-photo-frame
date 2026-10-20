@@ -51,7 +51,7 @@ func FetchWeather(ctx context.Context, lat, lon float64) (Weather, time.Time, er
 		return Weather{}, date, err
 	}
 	return Weather{TempC: body.Current.Temp, Code: body.Current.Code,
-		IsDay: body.Current.IsDay == 1, Fetched: time.Now()}, date, nil
+		IsDay: body.Current.IsDay == 1, Fetched: wallNow()}, date, nil
 }
 
 func loadWeather(stateDir string) (w Weather) {
@@ -67,49 +67,49 @@ func saveWeather(stateDir string, w Weather) error {
 	return writeFileAtomic(filepath.Join(stateDir, "weather.json"), b)
 }
 
-// wmoText turns a WMO weather code into the short lowercase phrase the overlay shows.
+// wmoText turns a WMO weather code into the short sentence-case phrase the overlay shows.
 func wmoText(code int) string {
 	switch code {
 	case 0:
-		return "clear"
+		return "Clear"
 	case 1:
-		return "mostly clear"
+		return "Mostly clear"
 	case 2:
-		return "partly cloudy"
+		return "Partly cloudy"
 	case 3:
-		return "cloudy"
+		return "Cloudy"
 	case 45, 48:
-		return "fog"
+		return "Fog"
 	case 51, 53, 55:
-		return "drizzle"
+		return "Drizzle"
 	case 56, 57:
-		return "freezing drizzle"
+		return "Freezing drizzle"
 	case 61:
-		return "light rain"
+		return "Light rain"
 	case 63:
-		return "rain"
+		return "Rain"
 	case 65:
-		return "heavy rain"
+		return "Heavy rain"
 	case 66, 67:
-		return "freezing rain"
+		return "Freezing rain"
 	case 71:
-		return "light snow"
+		return "Light snow"
 	case 73:
-		return "snow"
+		return "Snow"
 	case 75:
-		return "heavy snow"
+		return "Heavy snow"
 	case 77:
-		return "snow grains"
+		return "Snow grains"
 	case 80, 81:
-		return "showers"
+		return "Showers"
 	case 82:
-		return "heavy showers"
+		return "Heavy showers"
 	case 85, 86:
-		return "snow showers"
+		return "Snow showers"
 	case 95:
-		return "thunderstorm"
+		return "Thunderstorm"
 	case 96, 99:
-		return "thunderstorm, hail"
+		return "Thunderstorm, hail"
 	}
 	return "—"
 }
