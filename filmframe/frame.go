@@ -76,8 +76,13 @@ func (f *Frame) UpdateOverlay(info OverlayInfo) error {
 	if !f.visible || info == f.info {
 		return nil
 	}
+	prev := f.info
 	f.info = info
-	return f.step(Shown)
+	if err := f.step(Shown); err != nil {
+		f.info = prev // so the next tick tries again
+		return err
+	}
+	return nil
 }
 
 // HideOverlay fades out, then a flashing full refresh restores the bare photo.

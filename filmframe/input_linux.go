@@ -20,6 +20,7 @@ const (
 	evKey           = 0x01
 	evAbs           = 0x03
 	synReport       = 0x00
+	synDropped      = 0x03
 	absX            = 0x00
 	absY            = 0x01
 	absMTSlot       = 0x2f
@@ -181,7 +182,7 @@ func (ts *TouchScreen) Run(out chan<- Touch) error {
 	var slot int32
 	var id, prevID int32 = -1, -1
 	var rx, ry int32
-	moved := false
+	moved, dropped := false, false
 	for {
 		n, err := ts.f.Read(buf)
 		if err != nil {
@@ -192,6 +193,24 @@ func (ts *TouchScreen) Run(out chan<- Touch) error {
 			typ := binary.LittleEndian.Uint16(e[0:])
 			code := binary.LittleEndian.Uint16(e[2:])
 			val := int32(binary.LittleEndian.Uint32(e[4:]))
+			if typ == evSyn && code == synDropped {
+				// the kernel buffer overflowed: skip to the next report, then end the touch
+				// so a stale "finger down" can't turn into a long press
+				dropped = true
+				continue
+			}
+			if dropped {
+				if typ == evSyn && code == synReport {
+					dropped, moved = false, false
+					if prevID >= 0 {
+						x, y := ts.toScreen(rx, ry)
+						out <- Touch{TouchUp, x, y, time.Now()}
+					}
+					slot = evAbsInfo(ts.f.Fd(), absMTSlot).Value
+					id, prevID = -1, -1
+				}
+				continue
+			}
 			switch {
 			case typ == evAbs && code == absMTSlot:
 				slot = val

@@ -52,7 +52,8 @@ func runDevice(cfg Config) error {
 	}
 	defer ts.Close()
 	log.Printf("touch: %s %s", ts.Name, ts.Range())
-	touches := make(chan Touch, 256)
+	// room for a few seconds of dragging during a blocking fade, so the kernel buffer never overflows
+	touches := make(chan Touch, 1024)
 	go func() { log.Printf("touch reader stopped: %v", ts.Run(touches)) }()
 	power := make(chan struct{}, 1)
 	WatchPower(power)
@@ -71,7 +72,7 @@ func runDevice(cfg Config) error {
 		}
 	}()
 
-	show := func(path string) {
+	show := func(path string) bool {
 		for tries := 0; tries < 5; tries++ {
 			img, err := LoadPhoto(path)
 			if err == nil {
@@ -79,13 +80,16 @@ func runDevice(cfg Config) error {
 					log.Printf("display: %v", err)
 				}
 				log.Printf("photo %s (battery %s%%)", path, battery())
-				return
+				return true
 			}
 			log.Printf("skip %s: %v", path, err)
 			path = pl.Next()
 		}
+		return false
 	}
-	show(pl.Current())
+	if !show(pl.Current()) {
+		return fmt.Errorf("could not load any photo from %s", cfg.PhotoDir)
+	}
 
 	weather := loadWeather(cfg.StateDir)
 	weatherDone := make(chan Weather, 1)
