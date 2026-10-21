@@ -113,4 +113,4 @@ This repo holds the frame app, the stand designs and helper scripts. It holds no
 
 ## Licenses
 
-Code, scripts and the frame stand designs: MIT ([LICENSE](LICENSE)). Inter typeface: SIL Open Font License (`filmframe/assets/Inter-LICENSE.txt`). Weather icons: Lucide, ISC (`filmframe/assets/icons/LICENSE.txt`). Sample photos: public domain, US government (FSA/OWI) works from the Library of Congress ([samples/SOURCES.md](samples/SOURCES.md)). Go modules fetched at build time: BSD-3-Clause (`golang.org/x/...`, `srwiley/oksvg`, `srwiley/rasterx`).
+Code, scripts and the frame stand designs: MIT ([LICENSE](LICENSE)). Inter typeface: SIL Open Font License (`filmframe/assets/Inter-LICENSE.txt`). Weather icons: Lucide, ISC (`filmframe/assets/icons/LICENSE.txt`). Sample photos: film photographs by the repository owner, shown here as samples and not covered by the MIT licence ([samples/SOURCES.md](samples/SOURCES.md)). Go modules fetched at build time: BSD-3-Clause (`golang.org/x/...`, `srwiley/oksvg`, `srwiley/rasterx`).
