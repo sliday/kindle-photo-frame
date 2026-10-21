@@ -37,7 +37,7 @@ for n in names:
         ext = np.ptp(m.triangles[patch].reshape(-1, 3)[:, :2], axis=0)
         widest = max(widest, ext.min())
     print(f"{'':14s} overhang >50deg {area[down].sum():.0f} mm2, widest span {widest:.1f} mm"
-          + ("  <-- needs supports" if widest > 12 else ""))
+          + ("  <-- needs supports" if widest > 10 else ""))
 # one 3MF per part: front and back together are wider than most beds
 for n, m in meshes.items():
     m = m.copy()

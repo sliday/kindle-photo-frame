@@ -1,0 +1,19 @@
+Visibility check: Cycles flat ID colours, orthographic camera relative to the glass.
+Image 90.600 x 122.400 mm; border 5.000 mm; logo top gap 6.500 mm.
+Logo width 22.000 mm. Gravity seat: dz=0; dx=+/-0.400; dy=+0.320 mm.
+Each band and logo count is the maximum across both lateral stops; bands exclude the frame bevel.
+Angles describe camera position: up/down (pitch), right/left (yaw). No stand lean in this coordinate system.
+view           left_mm right_mm bottom_mm top_mm logo_pixels image_clipped
+front           5.366    5.366     5.008  5.008           0 false
+pitch+30        5.366    5.366     5.232  4.406           0 false
+pitch-30        5.366    5.366     4.406  5.232           0 false
+pitch+45        5.366    5.366     5.396  4.047           0 false
+pitch-45        5.366    5.366     4.047  5.396           0 false
+yaw+30          5.507    4.957     5.008  5.008           0 false
+yaw-30          4.957    5.507     5.008  5.008           0 false
+yaw+45          5.733    4.553     5.008  5.008           0 false
+yaw-45          4.553    5.733     5.008  5.008           0 false
+Positive control, frame hidden: 3056 logo pixels (must exceed zero).
+Raster uncertainty: at most 0.337 mm per band (2 pixels).
+Scope: nominal CAD and stated pocket play; no allowance for print error or logo measurement error.
+PASS: logo hidden and image clear within raster tolerance in all 18 poses.

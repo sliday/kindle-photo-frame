@@ -10,6 +10,10 @@ from mathutils import Matrix, Vector
 
 # public-domain samples, so committed renders never carry anyone's private photos
 PHOTO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "samples")
+EXPLODE_GAP = 90.0             # depth spacing between assembly parts, mm
+EXPLODE_BACK_LIFT = 35.0        # lift the back above its seat, mm
+EXPLODE_CABLE_RUN = 55.0        # visible cable tail behind the port, mm
+EXPLODE_FILL = 5.0              # front fill for exposed parts, watts
 
 
 def _principled(name, color, rough):
@@ -22,41 +26,44 @@ def _principled(name, color, rough):
 
 
 def wood(name, base):
-    """Procedural grain running up the frame: wave bands warped by noise."""
+    """Irregular walnut grain in local millimetres, with a satin finish."""
     m = bpy.data.materials.new(name)
     m.use_nodes = True
-    nt = m.node_tree
-    n, l = nt.nodes, nt.links
+    n, l = m.node_tree.nodes, m.node_tree.links
     bsdf = n["Principled BSDF"]
-    bsdf.inputs["Roughness"].default_value = 0.72
-    if "Specular IOR Level" in bsdf.inputs:  # matte wood fill: little sheen, so dark woods stay dark
-        bsdf.inputs["Specular IOR Level"].default_value = 0.2
+    bsdf.inputs["Roughness"].default_value = 0.45
+    bsdf.inputs["Specular IOR Level"].default_value = 0.2
+    bsdf.inputs["Coat Weight"].default_value = 0.03
+    bsdf.inputs["Coat Roughness"].default_value = 0.4
     co = n.new("ShaderNodeTexCoord")
     mp = n.new("ShaderNodeMapping")
-    mp.inputs["Scale"].default_value = (1.0, 1.0, 0.12)
-    wave = n.new("ShaderNodeTexWave")
-    wave.wave_type = "BANDS"
-    wave.bands_direction = "X"
-    wave.inputs["Scale"].default_value = 0.35
-    wave.inputs["Distortion"].default_value = 7.0
-    wave.inputs["Detail"].default_value = 3.0
-    wave.inputs["Detail Scale"].default_value = 0.6
-    noise = n.new("ShaderNodeTexNoise")
-    noise.inputs["Scale"].default_value = 0.04
+    mp.inputs["Scale"].default_value = (0.35, 0.35, 0.02)
+    grain = n.new("ShaderNodeTexNoise")
+    grain.inputs["Scale"].default_value = 1.0
+    grain.inputs["Detail"].default_value = 3.0
+    grain.inputs["Roughness"].default_value = 0.65
+    grain.inputs["Distortion"].default_value = 0.2
     ramp = n.new("ShaderNodeValToRGB")
-    ramp.color_ramp.elements[0].color = (*[c * 0.72 for c in base], 1)
-    ramp.color_ramp.elements[1].color = (*[min(1, c * 1.12) for c in base], 1)
-    mix = n.new("ShaderNodeMix")
-    mix.data_type = "RGBA"
-    mix.blend_type = "MULTIPLY"
-    mix.inputs["Factor"].default_value = 0.25
+    ramp.color_ramp.elements[0].position = 0.25
+    ramp.color_ramp.elements[0].color = (*[c * 0.75 for c in base], 1)
+    ramp.color_ramp.elements[1].position = 0.75
+    ramp.color_ramp.elements[1].color = (*[c * 1.15 for c in base], 1)
+    fine = n.new("ShaderNodeMapping")
+    fine.inputs["Scale"].default_value = (4.0, 4.0, 0.1)
+    pores = n.new("ShaderNodeTexNoise")
+    pores.inputs["Scale"].default_value = 1.0
+    pores.inputs["Detail"].default_value = 2.0
+    bump = n.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = 0.15
+    bump.inputs["Distance"].default_value = 0.00003
     l.new(co.outputs["Object"], mp.inputs["Vector"])
-    l.new(mp.outputs["Vector"], wave.inputs["Vector"])
-    l.new(co.outputs["Object"], noise.inputs["Vector"])
-    l.new(wave.outputs["Fac"], ramp.inputs["Fac"])
-    l.new(ramp.outputs["Color"], mix.inputs["A"])
-    l.new(noise.outputs["Color"], mix.inputs["B"])
-    l.new(mix.outputs["Result"], bsdf.inputs["Base Color"])
+    l.new(mp.outputs["Vector"], grain.inputs["Vector"])
+    l.new(grain.outputs["Fac"], ramp.inputs["Fac"])
+    l.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
+    l.new(co.outputs["Object"], fine.inputs["Vector"])
+    l.new(fine.outputs["Vector"], pores.inputs["Vector"])
+    l.new(pores.outputs["Fac"], bump.inputs["Height"])
+    l.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
     return m
 
 
@@ -65,16 +72,18 @@ def screen_material(photo):
     m.use_nodes = True
     n, l = m.node_tree.nodes, m.node_tree.links
     b = n["Principled BSDF"]
-    b.inputs["Roughness"].default_value = 0.9
+    b.inputs["Roughness"].default_value = 0.85
+    b.inputs["Emission Strength"].default_value = 0.0
+    b.inputs["Specular IOR Level"].default_value = 0.12
     tex = n.new("ShaderNodeTexImage")
-    tex.image = bpy.data.images.load(photo)
-    tint = n.new("ShaderNodeMix")
-    tint.data_type = "RGBA"
-    tint.blend_type = "MULTIPLY"
-    tint.inputs["Factor"].default_value = 1.0
-    tint.inputs["B"].default_value = (0.78, 0.76, 0.71, 1)  # e-ink paper is warm grey, not white
-    l.new(tex.outputs["Color"], tint.inputs["A"])
-    l.new(tint.outputs["Result"], b.inputs["Base Color"])
+    tex.image = bpy.data.images.load(photo, check_existing=True)
+    grey = n.new("ShaderNodeRGBToBW")
+    paper = n.new("ShaderNodeMapRange")
+    paper.inputs["To Min"].default_value = 0.04
+    paper.inputs["To Max"].default_value = 0.60
+    l.new(tex.outputs["Color"], grey.inputs["Color"])
+    l.new(grey.outputs["Val"], paper.inputs["Value"])
+    l.new(paper.outputs["Result"], b.inputs["Base Color"])
     return m
 
 
@@ -103,7 +112,7 @@ def rounded_prism(name, x0, z0, x1, z1, r, y0, y1, seg=8):
 
 def screen_plane(p, photo):
     bm = bmesh.new()
-    y = p["FRONT_T"] + 0.01
+    y = p["FRONT_T"] - 0.005
     x0, z0 = p["SX0"], p["SZ0"]
     x1, z1 = x0 + p["SCREEN_W"], z0 + p["SCREEN_H"]
     vs = [bm.verts.new(v) for v in ((x0, y, z0), (x1, y, z0), (x1, y, z1), (x0, y, z1))]
@@ -118,6 +127,41 @@ def screen_plane(p, photo):
     bpy.context.scene.collection.objects.link(ob)
     ob.data.materials.append(screen_material(photo))
     return ob
+
+
+def device_objects(p, photo=None):
+    """The black device and its printed wordmark, in local millimetres."""
+    photo = photo or os.path.join(PHOTO_DIR, "evans-boardwalk.jpg")
+    kindle = rounded_prism("kindle", p["KX0"], p["KZ0"], p["KX0"] + p["K_W"], p["KZ0"] + p["K_H"], 6.0,
+                           p["FRONT_T"], p["FRONT_T"] + p["K_D"])
+    glass = _principled("black-glass", (0.008, 0.008, 0.008), 0.22)
+    glass.node_tree.nodes["Principled BSDF"].inputs["IOR"].default_value = 1.5
+    kindle.data.materials.append(glass)
+    screen = screen_plane(p, photo)
+    text = bpy.data.curves.new("kindle-wordmark", "FONT")
+    text.body = "kindle"
+    text.size = 1.0
+    text.resolution_u = 16
+    font = os.path.join(os.path.dirname(__file__), "..", "filmframe", "assets", "Inter-Regular.ttf")
+    if os.path.isfile(font):
+        text.font = bpy.data.fonts.load(font, check_existing=True)
+    source = bpy.data.objects.new("wordmark-source", text)
+    bpy.context.scene.collection.objects.link(source)
+    bpy.context.view_layer.update()
+    mesh = bpy.data.meshes.new_from_object(source.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    bpy.data.objects.remove(source, do_unlink=True)
+    xmin = min(v.co.x for v in mesh.vertices)
+    xmax = max(v.co.x for v in mesh.vertices)
+    top = max(v.co.y for v in mesh.vertices)
+    scale = p.get("LOGO_W", 22.0) / (xmax - xmin)
+    for v in mesh.vertices:
+        x, z = v.co.x, v.co.y
+        v.co = (p["KX0"] + p["K_W"] / 2 + (x - (xmin + xmax) / 2) * scale,
+                p["FRONT_T"] - 0.005, p["SZ0"] - p["LOGO_GAP"] + (z - top) * scale)
+    logo = bpy.data.objects.new("logo", mesh)
+    bpy.context.scene.collection.objects.link(logo)
+    logo.data.materials.append(_principled("wordmark-grey", (0.45, 0.45, 0.45), 0.5))
+    return dict(kindle=kindle, screen=screen, logo=logo)
 
 
 def look_at(cam, target):
@@ -207,16 +251,11 @@ def _stage(p, quick):
     root.matrix_world = (Matrix.Translation((0, 0, p.get("LEG_H", 0.0) * math.cos(lean) * 0.001))
                          @ Matrix.Rotation(-lean, 4, "X") @ Matrix.Scale(0.001, 4))
 
-    kindle = rounded_prism("kindle", p["KX0"], p["KZ0"], p["KX0"] + p["K_W"], p["KZ0"] + p["K_H"], 6.0,
-                           p["FRONT_T"] + 0.02, p["FRONT_T"] + 0.02 + p["K_D"])
-    kindle.data.materials.append(_principled("kindle", (0.018, 0.018, 0.02), 0.45))
     photos = sorted(f for f in os.listdir(PHOTO_DIR) if f.lower().endswith(".jpg")) if os.path.isdir(PHOTO_DIR) else []
     pick = lambda name: os.path.join(PHOTO_DIR, name if name in photos else photos[0])
-    screen = screen_plane(p, pick("evans-boardwalk.jpg"))
-
+    device = device_objects(p, pick("evans-boardwalk.jpg"))
     walnut = wood("walnut", (0.018, 0.0085, 0.004))
-    paper = _principled("mat", (0.74, 0.70, 0.62), 0.85)
-    for ob in (kindle, screen):
+    for ob in device.values():
         ob.parent = root
 
     # a shelf slab rather than a plane, so the cutaway shows it in section
@@ -245,72 +284,165 @@ def _stage(p, quick):
         lo.location = loc
         look_at(lo, (0.066, 0.0, 0.1))
     light("key", (-0.45, -0.55, 0.65), 22, 0.5)
-    light("fill", (0.6, -0.35, 0.25), 5, 0.8)
-    light("rim", (0.35, 0.45, 0.45), 8, 0.4)
+    light("fill", (0.6, -0.35, 0.25), 3, 0.8)
+    light("rim", (0.35, 0.45, 0.45), 6, 0.4)
 
     cam_d = bpy.data.cameras.new("cam")
-    cam_d.lens = 60
+    cam_d.lens = 80
+    cam_d.dof.use_dof = True
+    cam_d.dof.aperture_fstop = 8.0
     cam = bpy.data.objects.new("cam", cam_d)
     sc.collection.objects.link(cam)
     sc.camera = cam
-    return dict(sc=sc, root=root, kindle=kindle, screen=screen, pick=pick, walnut=walnut, paper=paper,
+    return dict(sc=sc, root=root, **device, pick=pick, walnut=walnut,
                 floor=floor, wall=wall, cam=cam, cam_d=cam_d)
+
+
+def _exploded(parts, stage, p, plug, cable, shot, filename, back_name, only):
+    if only and only not in filename:
+        return
+    root, sc, cam = (stage[k] for k in ("root", "sc", "cam"))
+    device = [stage[k] for k in ("kindle", "screen", "logo")]
+    objects = list(parts.values()) + device + [plug, cable]
+    saved = {ob: ob.matrix_basis.copy() for ob in objects}
+    root_matrix = root.matrix_world.copy()
+    resolution = (sc.render.resolution_x, sc.render.resolution_y)
+    sensor_fit = cam.data.sensor_fit
+    cable_mesh = cable.data
+    fill = bpy.data.objects["fill"]
+    fill_matrix, fill_energy = fill.matrix_world.copy(), fill.data.energy
+    try:
+        cable.data = cable_mesh.copy()
+        bm = bmesh.new()
+        bm.from_mesh(cable.data)
+        cut = bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces),
+                                    plane_co=(0, p["PORT_Y"] + EXPLODE_CABLE_RUN, 0),
+                                    plane_no=(0, 1, 0), clear_outer=True, dist=0.00001)
+        boundary = [edge for edge in cut["geom_cut"] if isinstance(edge, bmesh.types.BMEdge) and edge.is_boundary]
+        if boundary:
+            bmesh.ops.holes_fill(bm, edges=boundary)
+        bm.to_mesh(cable.data)
+        bm.free()
+        device_lift = EXPLODE_GAP * math.tan(p["LEAN"]) + 20.0
+        for ob in device + [plug, cable]:
+            ob.matrix_basis = Matrix.Translation((0, EXPLODE_GAP, device_lift)) @ saved[ob]
+        parts[back_name].location.y += 2 * EXPLODE_GAP
+        parts[back_name].location.z += EXPLODE_BACK_LIFT + 2 * EXPLODE_GAP * math.tan(p["LEAN"])
+        sc.render.resolution_x, sc.render.resolution_y = 1600, 1200
+        cam.data.lens = 80
+        cam.data.sensor_fit = "HORIZONTAL"
+        bpy.context.view_layer.update()
+        points = [ob.matrix_world @ Vector(corner) for ob in list(parts.values()) + device for corner in ob.bound_box]
+        lo = Vector(tuple(min(pt[i] for pt in points) for i in range(3)))
+        hi = Vector(tuple(max(pt[i] for pt in points) for i in range(3)))
+        target = (lo + hi) / 2
+        direction = Vector((-0.86, -0.48, 0.20)).normalized()
+        cam.location = target + direction
+        look_at(cam, target)
+        rotation = cam.rotation_euler.to_matrix()
+        right, up = rotation @ Vector((1, 0, 0)), rotation @ Vector((0, 1, 0))
+        xs = [(pt - target).dot(right) for pt in points]
+        ys = [(pt - target).dot(up) for pt in points]
+        target += right * (min(xs) + max(xs)) / 2 + up * (min(ys) + max(ys)) / 2
+        span_x, span_y = max(xs) - min(xs), max(ys) - min(ys)
+        aspect = min(4 / 3, max(0.9, span_x / span_y))
+        sc.render.resolution_y = round(sc.render.resolution_x / aspect)
+        tan_x = cam.data.sensor_width / (2 * cam.data.lens)
+        tan_y = tan_x * sc.render.resolution_y / sc.render.resolution_x
+        distance = 1.12 * max(max(abs((pt - target).dot(right)) / tan_x,
+                                  abs((pt - target).dot(up)) / tan_y) + (pt - target).dot(direction)
+                              for pt in points)
+        cam.location = target + direction * distance
+        look_at(cam, target)
+        bpy.context.view_layer.update()
+        from bpy_extras.object_utils import world_to_camera_view
+        projected = [world_to_camera_view(sc, cam, pt) for pt in points]
+        coverage = max(pt.x for pt in projected) - min(pt.x for pt in projected)
+        assert coverage >= 0.70, f"exploded width coverage {coverage:.1%} is below 70%"
+        print(f"{filename}: projected width coverage {coverage:.1%}; {sc.render.resolution_x} x {sc.render.resolution_y}")
+        fill.location = target + Vector((0.35, -0.45, 0.45))
+        fill.data.energy = EXPLODE_FILL
+        look_at(fill, target)
+        shot(filename, cam.location.copy(), target, wall_on=False)
+    finally:
+        clipped_mesh = cable.data
+        cable.data = cable_mesh
+        if clipped_mesh != cable_mesh:
+            bpy.data.meshes.remove(clipped_mesh)
+        fill.matrix_world, fill.data.energy = fill_matrix, fill_energy
+        for ob, matrix in saved.items():
+            ob.matrix_basis = matrix
+        root.matrix_world = root_matrix
+        sc.render.resolution_x, sc.render.resolution_y = resolution
+        cam.data.sensor_fit = sensor_fit
+        bpy.context.view_layer.update()
 
 
 def render(parts, out, p, quick=False, only=None):
     S = _stage(p, quick)
-    sc, root, kindle, screen, pick, walnut, paper, floor, wall, cam, cam_d = (
-        S[k] for k in ("sc", "root", "kindle", "screen", "pick", "walnut", "paper", "floor", "wall", "cam", "cam_d"))
+    sc, root, kindle, screen, logo, pick, walnut, floor, wall, cam, cam_d = (
+        S[k] for k in ("sc", "root", "kindle", "screen", "logo", "pick", "walnut", "floor", "wall", "cam", "cam_d"))
     plug, cable = cable_object(p, _principled("cable", (0.012, 0.012, 0.013), 0.55))
     for ob in list(parts.values()) + [plug, cable]:
         ob.parent = root
 
-    def shot(fname, loc, target, front, with_mat, wood_mat, photo, wall_on=True):
+    def shot(fname, loc, target, photo="evans-boardwalk.jpg", wall_on=True):
         if only and only not in fname:
             return
         wall.hide_render = not wall_on
-        parts["front-classic"].hide_render = front != "front-classic"
-        parts["front-mat"].hide_render = front != "front-mat"
-        parts["mat"].hide_render = not with_mat
-        for key in ("front-classic", "front-mat", "back"):
-            parts[key].data.materials.clear()
-            parts[key].data.materials.append(wood_mat)
-        parts["mat"].data.materials.clear()
-        parts["mat"].data.materials.append(paper)
+        for ob in parts.values():
+            ob.data.materials.clear()
+            ob.data.materials.append(walnut)
         screen.data.materials[0].node_tree.nodes["Image Texture"].image = bpy.data.images.load(pick(photo), check_existing=True)
         cam.location = loc
         look_at(cam, target)
+        cam_d.dof.focus_distance = (Vector(target) - cam.location).length
         sc.render.filepath = os.path.join(out, fname)
         bpy.ops.render.render(write_still=True)
         print("rendered", fname)
 
-    tgt = (0.066, 0.02, 0.105)
-    shot("render-walnut.png", (-0.17, -0.52, 0.17), tgt, "front-classic", False, walnut, "evans-boardwalk.jpg")
-    shot("render-walnut-mat.png", (0.30, -0.49, 0.16), tgt, "front-mat", True, walnut, "evans-boardwalk.jpg")
-    shot("render-back.png", (0.42, 0.40, 0.20), (0.066, 0.03, 0.06), "front-classic", False, walnut, "delano-victory-garden.jpg",
-         wall_on=False)
-    cam_d.lens = 85
-    shot("render-front.png", (0.066, -0.80, 0.12), (0.066, 0.0, 0.108), "front-classic", False, walnut, "evans-boardwalk.jpg")
-
-    # where the charger goes: low behind the frame, then a cutaway through the port
-    cam_d.lens = 50
-    shot("render-cable.png", (0.19, 0.27, 0.07), (0.055, 0.015, 0.035), "front-classic", False, walnut, "delano-victory-garden.jpg",
-         wall_on=False)
+    tgt = (p["W"] * 0.0005, 0.02, 0.110)
+    # a small yaw: steeper views look through the leg gaps at the cable lying behind the left leg
+    shot("render-walnut.png", (tgt[0] + 0.10, -0.78, 0.22), tgt)
+    shot("render-back.png", (0.46, 0.70, 0.24), (tgt[0], 0.03, 0.10), wall_on=False)
+    parts["back"].location.z += p["SLIDE_TRAVEL"]
+    slide_target = root.matrix_world @ Vector((p["W"] / 2, p["D"] / 2,
+                                               (p["H"] + p["SLIDE_TRAVEL"] - p["LEG_H"]) / 2))
+    slide_distance = max(1.0, (p["H"] + p["SLIDE_TRAVEL"] + p["LEG_H"]) * 0.0035)
+    slide_camera = slide_target + Vector((0.56, 0.80, 0.22)).normalized() * slide_distance
+    try:
+        shot("render-slide.png", slide_camera, slide_target, wall_on=False)
+    finally:
+        parts["back"].location.z -= p["SLIDE_TRAVEL"]
+    front_target = root.matrix_world @ Vector((p["W"] / 2, 0, (p["H"] - p["LEG_H"]) / 2))
+    front_normal = root.matrix_world.to_3x3() @ Vector((0, -1, 0))
+    shot("render-front.png", front_target + front_normal.normalized() * 0.82, front_target)
+    shot("render-cable.png", (0.30, 0.60, 0.17), (0.065, 0.045, 0.07), wall_on=False)
+    _exploded(parts, S, p, plug, cable, shot, "render-exploded.png", "back", only)
 
     if only and "section" not in only:
         return
     world_of = lambda y, z: root.matrix_world @ Vector((p["PORT_X"], y, z))
     # a 14 mm slice ending at the port: the cut face looks at the camera, front of the frame on
-    # the left, and the kickstand fins (further along X) drop out of the picture
+    # the left, and the integral feet (further along X) drop out of the picture
     cutters = [rounded_prism("cut-a", p["PORT_X"], -2000, 2000, 2000, 1.0, -2000, 2000),
                rounded_prism("cut-b", -2000, -2000, p["PORT_X"] - 14, 2000, 1.0, -2000, 2000)]
     for c in cutters:
         c.parent, c.hide_render = root, True
-    for ob in (parts["front-classic"], parts["back"], kindle, plug, cable, floor):
+    for ob in (parts["front"], parts["back"], kindle, plug, cable, floor):
         for c in cutters:
             mod = ob.modifiers.new(c.name, "BOOLEAN")
             mod.operation, mod.solver, mod.object = "DIFFERENCE", "EXACT", c
+    for ob in (screen, logo):
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        for x, normal in ((p["PORT_X"], (1, 0, 0)), (p["PORT_X"] - 14, (-1, 0, 0))):
+            bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces),
+                                  plane_co=(x, 0, 0), plane_no=normal, clear_outer=True, dist=0.00001)
+        bm.to_mesh(ob.data)
+        bm.free()
     sc.render.resolution_x, sc.render.resolution_y = 1600, 1000
+    cam_d.dof.use_dof = False
     sc.render.film_transparent = True
     cam_d.type = "ORTHO"
     cam_d.ortho_scale = 0.17
@@ -322,8 +454,7 @@ def render(parts, out, p, quick=False, only=None):
     for ob in (plug, cable):
         ob.data.materials.clear()
         ob.data.materials.append(accent)
-    shot("render-section.png", (0.4, 0.045, 0.05), (port.x, 0.045, 0.05), "front-classic", False, walnut,
-         "delano-victory-garden.jpg", wall_on=False)
+    shot("render-section.png", (0.4, 0.045, 0.05), (port.x, 0.045, 0.05), wall_on=False)
     if only is None or "section" in only:
         import subprocess
         png = sc.render.filepath
@@ -388,7 +519,8 @@ def _box_object(name, size, loc, mat):
     bmesh.ops.create_cube(bm, size=1.0)
     bm.to_mesh(ob.data)
     bm.free()
-    ob.scale, ob.location = size, loc
+    ob.data.transform(Matrix.Diagonal(Vector((*size, 1))))
+    ob.location = loc
     ob.data.materials.append(mat)
     return ob
 
@@ -429,20 +561,20 @@ def _stem(name, pts, mat, r=0.0011):
 
 def render_gallery(parts, out, p, quick=False, only=None):
     """Gallery frame: hero, front, back, the cable cutaway and a styled shelf."""
-    p = dict(p, FRONT_T=p["FACE_T"] + p["MAT_T"])   # the screen sits behind the mat
+    p = dict(p, FRONT_T=p["FACE_T"])
     S = _stage(p, quick)
-    sc, root, screen, pick, walnut, paper, floor, wall, cam, cam_d = (
-        S[k] for k in ("sc", "root", "screen", "pick", "walnut", "paper", "floor", "wall", "cam", "cam_d"))
+    sc, root, screen, pick, walnut, floor, wall, cam, cam_d = (
+        S[k] for k in ("sc", "root", "screen", "pick", "walnut", "floor", "wall", "cam", "cam_d"))
     plug, cable, pts = right_angle_cable(p, _principled("cable", (0.012, 0.012, 0.013), 0.55))
     for ob in list(parts.values()) + [plug, cable]:
         ob.parent = root
     for key, ob in parts.items():
         ob.data.materials.clear()
-        ob.data.materials.append(paper if key == "gallery-mat" else walnut)
+        ob.data.materials.append(walnut)
     world_of = lambda x, y, z: root.matrix_world @ Vector((x, y, z))
     centre = world_of(p["W"] / 2, p["D"] / 2, p["H"] / 2)
 
-    def shot(fname, loc, target, photo="evans-boardwalk.jpg", wall_on=True, lens=60):
+    def shot(fname, loc, target, photo="evans-boardwalk.jpg", wall_on=True, lens=80):
         if only and only not in fname:
             return False
         wall.hide_render = not wall_on
@@ -450,26 +582,61 @@ def render_gallery(parts, out, p, quick=False, only=None):
         cam_d.lens = lens
         cam.location = loc
         look_at(cam, target)
+        cam_d.dof.focus_distance = (Vector(target) - cam.location).length
         sc.render.filepath = os.path.join(out, fname)
         bpy.ops.render.render(write_still=True)
         print("rendered", fname)
         return True
 
-    shot("render-gallery.png", (0.30, -0.49, 0.16), centre)  # from the right: the cable leaves on the left
-    shot("render-gallery-front.png", (centre.x, -0.80, centre.z + 0.01), centre, lens=85)
-    shot("render-gallery-back.png", (0.42, 0.40, 0.20), world_of(p["W"] / 2, p["D"], p["H"] * 0.3), wall_on=False)
+    shot("render-gallery.png", (0.38, -0.70, 0.21), centre)  # from the right: the cable leaves on the left
+    front_normal = root.matrix_world.to_3x3() @ Vector((0, -1, 0))
+    shot("render-gallery-front.png", centre + front_normal.normalized() * 0.78, centre, lens=85)
+    shot("render-gallery-back.png", (0.46, 0.68, 0.24), world_of(p["W"] / 2, p["D"], p["H"] * 0.45), wall_on=False)
+    parts["gallery-back"].location.z += p["SLIDE_TRAVEL"]
+    slide_target = world_of(p["W"] / 2, p["D"] / 2, (p["H"] + p["SLIDE_TRAVEL"]) / 2)
+    slide_distance = max(1.0, (p["H"] + p["SLIDE_TRAVEL"]) * 0.0035)
+    slide_camera = slide_target + Vector((0.56, 0.80, 0.22)).normalized() * slide_distance
+    try:
+        shot("render-gallery-slide.png", slide_camera, slide_target, wall_on=False)
+    finally:
+        parts["gallery-back"].location.z -= p["SLIDE_TRAVEL"]
+    _exploded(parts, S, p, plug, cable, shot, "render-gallery-exploded.png", "gallery-back", only)
 
     # a styled shelf: the slab gets a visible front edge, a stack of books and a vase keep it company
     if not only or "shelf" in only:
         floor.scale, floor.location = (1.5, 0.30, 0.018), (0, 0.03, -0.009)
-        books = [_box_object(f"book{i}", sz, loc, _principled(f"book{i}", col, 0.75)) for i, (sz, loc, col) in enumerate([
-            ((0.15, 0.21, 0.026), (0.285, 0.05, 0.013), (0.11, 0.20, 0.16)),
-            ((0.14, 0.20, 0.032), (0.28, 0.055, 0.042), (0.46, 0.20, 0.11)),
-            ((0.13, 0.19, 0.020), (0.285, 0.05, 0.068), (0.80, 0.74, 0.62))])]
-        for b, rot in zip(books, (-6, -10, -4)):
-            b.rotation_euler.z = math.radians(rot)
+        books = []
+        page = _principled("book-pages", (0.65, 0.61, 0.51), 0.9)
+        n, l = page.node_tree.nodes, page.node_tree.links
+        co = n.new("ShaderNodeTexCoord")
+        wave = n.new("ShaderNodeTexWave")
+        wave.wave_type, wave.bands_direction = "BANDS", "Z"
+        wave.inputs["Scale"].default_value = 110.0
+        bump = n.new("ShaderNodeBump")
+        bump.inputs["Strength"].default_value = 0.12
+        bump.inputs["Distance"].default_value = 0.00008
+        l.new(co.outputs["Generated"], wave.inputs["Vector"])
+        l.new(wave.outputs["Fac"], bump.inputs["Height"])
+        l.new(bump.outputs["Normal"], n["Principled BSDF"].inputs["Normal"])
+        for i, (sz, loc, col, rot) in enumerate([
+            ((0.15, 0.21, 0.026), (0.285, 0.05, 0.013), (0.11, 0.20, 0.16), -6),
+            ((0.14, 0.20, 0.032), (0.28, 0.055, 0.042), (0.46, 0.20, 0.11), -10),
+            ((0.13, 0.19, 0.020), (0.285, 0.05, 0.068), (0.80, 0.74, 0.62), -4)]):
+            cover = _principled(f"book-cover{i}", col, 0.65)
+            rotation = Matrix.Rotation(math.radians(rot), 4, "Z")
+            components = [("pages", (sz[0] - 0.004, sz[1] - 0.004, sz[2] - 0.003), (0.001, 0, 0), page),
+                          ("bottom", (sz[0], sz[1], 0.0015), (0, 0, -sz[2] / 2 + 0.00075), cover),
+                          ("top", (sz[0], sz[1], 0.0015), (0, 0, sz[2] / 2 - 0.00075), cover),
+                          ("spine", (0.002, sz[1], sz[2]), (-sz[0] / 2 + 0.001, 0, 0), cover)]
+            for name, size, offset, mat in components:
+                ob = _box_object(f"book{i}-{name}", size, Vector(loc) + rotation.to_3x3() @ Vector(offset), mat)
+                ob.rotation_euler.z = math.radians(rot)
+                bevel = ob.modifiers.new("soft-cover-edge", "BEVEL")
+                bevel.width, bevel.segments = 0.0005, 3
+                books.append(ob)
         vase = _lathe("vase", [(0.030, 0.0), (0.037, 0.02), (0.040, 0.05), (0.034, 0.09), (0.018, 0.12),
-                               (0.012, 0.14), (0.014, 0.148), (0.012, 0.150)],
+                               (0.012, 0.14), (0.014, 0.148), (0.012, 0.150), (0.010, 0.148),
+                               (0.009, 0.14), (0.015, 0.12), (0.029, 0.09), (0.034, 0.05), (0.028, 0.006)],
                       (-0.075, 0.06, 0.0), _principled("vase", (0.42, 0.44, 0.39), 0.65))
         straw = _principled("stem", (0.62, 0.52, 0.36), 0.8)
         stems = [_stem(f"stem{i}", pts, straw) for i, pts in enumerate([
@@ -479,7 +646,7 @@ def render_gallery(parts, out, p, quick=False, only=None):
         key = bpy.data.objects["key"].data
         key.color = (1.0, 0.91, 0.82)
         sc.render.resolution_x, sc.render.resolution_y = 1600, 1000
-        shot("render-gallery-shelf.png", (0.09, -0.66, 0.21), (0.10, 0.03, 0.105), lens=50)
+        shot("render-gallery-shelf.png", (0.10, -1.10, 0.30), (0.10, 0.03, 0.145), lens=75)
         sc.render.resolution_x, sc.render.resolution_y = 1200, 1500
         key.color = (1.0, 1.0, 1.0)
         for ob in books + [vase] + stems:
@@ -495,12 +662,12 @@ def render_gallery(parts, out, p, quick=False, only=None):
         ob.data.materials.append(accent)
     cutter = rounded_prism("cut-rail", -5, -60, p["W"] + 5, p["KZ0"] - 0.6, 0.5, -5, p["FRONT_T"] + 0.6)
     cutter.parent, cutter.hide_render = root, True
-    for key in ("gallery-front", "gallery-mat"):
+    for key in ("gallery-front",):
         mod = parts[key].modifiers.new("cut", "BOOLEAN")
         mod.operation, mod.solver, mod.object = "DIFFERENCE", "EXACT", cutter
     sc.render.resolution_x, sc.render.resolution_y = 1600, 1000
-    if shot("render-gallery-cable.png", (0.0, -0.36, 0.09), world_of(p["W"] * 0.5, p["D"] / 2, p["KZ0"] * 1.6),
-            wall_on=False, lens=60):
+    if shot("render-gallery-cable.png", (-0.04, -0.60, 0.13), world_of(p["W"] * 0.5, p["D"] / 2, p["KZ0"] * 1.6),
+            wall_on=False, lens=80):
         font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "filmframe", "assets", "Inter-Regular.ttf")
         gz0 = p["GALLERY"][1]
         far = max(p["CABLE_EXITS"], key=lambda x: abs(x - p["PORT_X"]))

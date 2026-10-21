@@ -14,14 +14,18 @@ Your film photos on a device you already own. Film Frame turns a Kindle Paperwhi
 
 ![overlay on three photos](docs/overlay-stills.png)
 
-**In a frame you print.** Two walnut stands hide the Kindle, and both hide the charger cable.
+**In a frame you print.** Two walnut stands hide the Kindle except a 5 mm black line around the photo, so the logo stays covered, and both hide the charger cable. Each is two printed parts: no screws, no glue.
 
 | Gallery | Bot |
 |---|---|
 | ![gallery frame](frame/print/gallery/render-gallery.png) | ![bot stand](frame/print/render-walnut.png) |
-| A box frame with a white mat set 5 mm behind the wood face. The mat covers the whole Kindle front, so the photo reads as a framed print. | Shaped like the Claude Code bot: arms beside the photo, four legs as feet. The wood leaves a 2.5 mm black line around the image, or holds a white mat. |
+| A walnut box frame. A 45° bevel steps down to the screen, and two feet behind the side walls hold it at 12°. | Shaped like the Claude Code bot: arms beside the photo, four legs as feet. |
 | ![cable in the gallery frame](frame/print/gallery/render-gallery-cable.png) | ![cable in the bot stand](frame/print/render-section.png) |
 | A 90° micro-USB plug turns along the bottom rail; the cable runs inside the rail and leaves through the back. | A straight plug drops into a hollow leg; the cable leaves through the back of its foot. |
+
+The back of each stand is a flat panel that slides down into grooves and stays put by gravity:
+
+![exploded view of the gallery frame](frame/print/gallery/render-gallery-exploded.png)
 
 Print files and notes for whoever prints them: [frame/PRINTING.md](frame/PRINTING.md).
 
@@ -95,12 +99,13 @@ Wake-ups use both PW4 RTCs (`/sys/class/rtc/rtc{0,1}/wakealarm`, relative form) 
 
 ```sh
 cd frame
-blender -b -P build_frame.py -- print --render             # bot
-blender -b -P build_gallery.py -- print/gallery --render   # gallery
+blender -b -P build_frame.py -- print --render --check             # bot
+blender -b -P build_gallery.py -- print/gallery --render --check   # gallery
 uv run --with trimesh --with networkx --with lxml --with scipy python check_print.py print/gallery
+uv run --with trimesh --with networkx --with lxml --with scipy python check_print.py print
 ```
 
-`check_print.py` reports, for every part, whether it is watertight and one body, and its widest unsupported overhang.
+`check_print.py` reports, for every part, whether it is watertight and one body, and its widest unsupported overhang. `--check` renders each front in flat colours from 18 angles and proves the Kindle's logo stays hidden (`visibility.txt`).
 
 ## Licenses
 

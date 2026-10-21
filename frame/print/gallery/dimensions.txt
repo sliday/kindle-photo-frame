@@ -1,17 +1,24 @@
-outer 154.600 wide x 198.010 tall; depth 18.100 (front 15.100 + back 3.000)
-moulding: sides/top 20.000; bottom 25.610 at front Y=0
-walls: left/right 18.550; top 11.000; Kindle bottom 19.210
-mat margins: sides 12.000; top 12.000; bottom 18.000 plus 1.000 overlap on the image; thickness 1.600
-sight 114.600 x 152.400; bounds (20.0, 25.609604081217334, 134.6, 178.00960408121733); chamfer 0.800
-image 90.600 x 122.400; origin (32.000, 43.610)
-pocket 117.500 x 167.800; Y 5.000..15.100; bounds (18.549999999999997, 19.209604081217336, 136.05, 187.00960408121733)
-gallery 88.700 x 14.000 high x 12.100 deep; bounds (32.949999999999996, 5.209604081217334, 121.65, 19.209604081217336)
-gallery floor top 5.210; minimum floor 2.000; end pads 14.400 wide
-plug 40.000 wide x 11.500 high x 8.800 deep; port (65.300, 10.690)
-cable exits X (39.949999999999996, 114.65); width 14.000; rounded top Z 14.210; cable diameter 4.000
-power pen hole diameter 5.000; centre X 89.300, Y 10.690
-screws 4 x M3x10; centres [(9.274999999999999, 59.402881224365196), (9.274999999999999, 148.507203060913), (145.325, 59.402881224365196), (145.325, 148.507203060913)]; pilot diameter 2.500, depth 8.000
-pilot floor Y 7.100; tip gap 1.000; front wood 7.100
-back clearance diameter 3.400; 90 degree countersink diameter 6.400
-fin thickness 6.000; top Z 108.905; shelf reach 65.000; tip Y 63.580; chamfer 1.000
+outer 156.600 wide x 198.244 tall; frame wall depth 14.500; panel thickness 3.000; pocket rear Y 11.500
+moulding to sight throat: sides/top 28.000; bottom 37.844
+flat face after sight bevel: sides/top 26.000; bottom 35.844
+walls: left/right 19.550; top 12.000; Kindle bottom 18.444
+black border 5.000; logo width 22.000; gap below image 6.500; throat depth 1.000
+sight 100.600 x 132.400; bounds (28.0, 37.844400459205254, 128.6, 170.24440045920525); chamfer 2.000
+image 90.600 x 122.400; origin (33.000, 42.844)
+pocket 117.500 x 167.800; Y 3.000..11.500; bounds (19.549999999999997, 18.444400459205255, 137.05, 186.24440045920528)
+gallery 88.700 x 14.000 high x 9.000 deep; bounds (33.949999999999996, 4.444400459205255, 122.65, 18.444400459205255)
+gallery floor top 4.444; minimum floor 2.000; end pads 14.400 wide
+plug 40.000 wide x 11.500 high x 8.800 deep; port (66.300, 7.090)
+cable exits X (40.949999999999996, 115.65); width 14.000; rounded top Z 13.444; cable diameter 4.000
+power pen hole diameter 5.000; centre X 90.300, Y 7.090
+two integral feet: thickness 6.000; centres X (4.5, 152.1); root/tip Y 14.000/63.580; top Z 109.034; tip height 3.000; shelf reach 65.000; panel clearance 1.576
 lean 12.000 degrees; shelf plane Z = Y * tan(LEAN)
+slide: 45 degree bevel; groove depth 3.300; normal clearance 0.300; panel thickness 3.000; bottom stop Z 5.082; half-open travel 96.581
+dovetail engagement nominal 2.576, minimum 1.851
+thumb notch: half-round, radius 6.000; top entry at Z 198.244
+gallery-front: mesh volume 174226.018 mm3; mass 75.614 g; centroid (78.29605064839026, 10.256728024520356, 90.76577246108776); print size 156.600 x 197.981, height 63.580 mm
+gallery-back: mesh volume 80153.085 mm3; mass 34.786 g; centroid (78.30000306998704, 12.989155370818876, 102.13128516808894); print size 142.600 x 193.162, height 3.000 mm
+mass model: PLA 1.24 g/cm3 times 0.35; Kindle 182.0 g at seated body centre (78.3, 7.09, 101.94440045920526)
+assembled mass 292.401 g; centroid (78.29897907216187, 8.6107218343349, 99.07586684424076); shelf projection (78.299, 29.022) mm
+actual support hull [(0.0, 7.21460353902069), (0.028822079300880432, 5.807104903385877), (0.11418069899082184, 4.453695231358883), (0.25279557704925537, 3.2063858083071097), (0.439339816570282, 2.1131098238141655), (0.5861760973930359, 1.533510799093125), (0.7025306224822998, 1.469189782900274), (0.9984337687492371, 1.349813970031582), (1.261267900466919, 1.2851893751119874), (1.5087647438049316, 1.2646924906451709), (155.09124755859375, 1.2646924906451709), (155.33872985839844, 1.2851893751119874), (155.6015625, 1.349813970031582), (155.89747619628906, 1.469189782900274), (156.01382446289062, 1.533510799093125), (156.16065979003906, 2.1131098238141655), (156.3472137451172, 3.2063858083071097), (156.48582458496094, 4.453695231358883), (156.57118225097656, 5.807104903385877), (156.60000610351562, 7.21460353902069), (156.60000610351562, 14.82393851975245), (155.10000610351562, 64.99999970011257), (1.5, 64.99999970011257), (0.0, 14.82393851975245)]; front/rear edges at COM X 1.265/65.000 mm
+stability margins: front 27.757; rear 35.978 mm; minimum 15.0
