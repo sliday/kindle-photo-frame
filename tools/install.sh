@@ -1,7 +1,8 @@
 #!/bin/bash
 # Copy Film Frame onto a mounted, jailbroken Kindle.
 # Usage: install.sh [/Volumes/Kindle] [photos_dir]
-#   Keeps an existing filmframe.conf. Photos are added; nothing on the Kindle gets deleted.
+#   Keeps an existing filmframe.conf; a first install uses kindle/filmframe/filmframe.local.conf
+#   (git-ignored, your own place and timezone) when present. Photos are added; nothing gets deleted.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 K=${1:-/Volumes/Kindle}
@@ -21,7 +22,12 @@ cp -X "$ROOT/kindle/filmframe/cover.png" "$K/filmframe/"
 if [ -f "$K/filmframe/filmframe.conf" ]; then
 	echo "kept existing $K/filmframe/filmframe.conf"
 else
-	cp -X "$ROOT/kindle/filmframe/filmframe.conf" "$K/filmframe/"
+	# your own settings (place, timezone) live in the git-ignored filmframe.local.conf
+	if [ -f "$ROOT/kindle/filmframe/filmframe.local.conf" ]; then
+		cp -X "$ROOT/kindle/filmframe/filmframe.local.conf" "$K/filmframe/filmframe.conf"
+	else
+		cp -X "$ROOT/kindle/filmframe/filmframe.conf" "$K/filmframe/"
+	fi
 fi
 
 if [ -n "$PHOTOS" ]; then

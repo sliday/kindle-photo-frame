@@ -400,7 +400,8 @@ with open(os.path.join(OUT, "dimensions.txt"), "w") as f:
             f"a {CABLE_EXIT_W:.0f} x {CABLE_EXIT_H:.0f} mm slot at the back of its foot; a {PLUG_LEN:.0f} mm "
             f"straight plug with a {CABLE_BEND_R:.0f} mm bend has {_spare:.1f} mm to spare above the shelf\n")
 
-bpy.ops.wm.save_as_mainfile(filepath=os.path.join(OUT, "film-frame.blend"))
+# libraries.write skips the window-manager data, where save_as_mainfile records $HOME
+bpy.data.libraries.write(os.path.join(OUT, "film-frame.blend"), set(bpy.data.scenes), compress=True)
 if RENDER:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import render_frame  # noqa: E402

@@ -7,3 +7,6 @@ share/
 .gstack/
 __pycache__/
 *.blend1
+codedb.snapshot
+.claude/
+*.local.conf

@@ -8,7 +8,8 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
-PHOTO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "photos", "kindle-frames")
+# public-domain samples, so committed renders never carry anyone's private photos
+PHOTO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "samples")
 
 
 def _principled(name, color, rough):
@@ -187,6 +188,7 @@ def render(parts, out, p, quick=False, only=None):
     sc.cycles.use_denoising = True
     sc.render.resolution_x, sc.render.resolution_y = 1200, 1500
     sc.render.resolution_percentage = 40 if quick else 100
+    sc.render.use_stamp_filename = False  # PNG metadata would carry the local .blend path
     sc.unit_settings.scale_length = 1.0
     sc.view_settings.view_transform = "AgX"
     sc.view_settings.look = "AgX - Medium High Contrast"
@@ -208,7 +210,7 @@ def render(parts, out, p, quick=False, only=None):
     kindle.data.materials.append(_principled("kindle", (0.018, 0.018, 0.02), 0.45))
     photos = sorted(f for f in os.listdir(PHOTO_DIR) if f.lower().endswith(".jpg")) if os.path.isdir(PHOTO_DIR) else []
     pick = lambda name: os.path.join(PHOTO_DIR, name if name in photos else photos[0])
-    screen = screen_plane(p, pick("000013(31).jpg"))
+    screen = screen_plane(p, pick("evans-boardwalk.jpg"))
 
     oak = wood("oak", (0.50, 0.32, 0.17))
     walnut = wood("walnut", (0.018, 0.0085, 0.004))
@@ -272,16 +274,16 @@ def render(parts, out, p, quick=False, only=None):
         print("rendered", fname)
 
     tgt = (0.066, 0.02, 0.105)
-    shot("render-walnut.png", (-0.17, -0.52, 0.17), tgt, "front-classic", False, walnut, "000013(31).jpg")
-    shot("render-walnut-mat.png", (0.30, -0.49, 0.16), tgt, "front-mat", True, walnut, "000001.jpg")
-    shot("render-back.png", (0.42, 0.40, 0.20), (0.066, 0.03, 0.06), "front-classic", False, walnut, "000001.jpg",
+    shot("render-walnut.png", (-0.17, -0.52, 0.17), tgt, "front-classic", False, walnut, "evans-boardwalk.jpg")
+    shot("render-walnut-mat.png", (0.30, -0.49, 0.16), tgt, "front-mat", True, walnut, "delano-victory-garden.jpg")
+    shot("render-back.png", (0.42, 0.40, 0.20), (0.066, 0.03, 0.06), "front-classic", False, walnut, "delano-victory-garden.jpg",
          wall_on=False)
     cam_d.lens = 85
-    shot("render-front.png", (0.066, -0.80, 0.12), (0.066, 0.0, 0.108), "front-classic", False, walnut, "000013(31).jpg")
+    shot("render-front.png", (0.066, -0.80, 0.12), (0.066, 0.0, 0.108), "front-classic", False, walnut, "evans-boardwalk.jpg")
 
     # where the charger goes: low behind the frame, then a cutaway through the port
     cam_d.lens = 50
-    shot("render-cable.png", (0.19, 0.27, 0.07), (0.055, 0.015, 0.035), "front-classic", False, walnut, "000001.jpg",
+    shot("render-cable.png", (0.19, 0.27, 0.07), (0.055, 0.015, 0.035), "front-classic", False, walnut, "delano-victory-garden.jpg",
          wall_on=False)
 
     if only and "section" not in only:
@@ -310,7 +312,7 @@ def render(parts, out, p, quick=False, only=None):
         ob.data.materials.clear()
         ob.data.materials.append(accent)
     shot("render-section.png", (0.4, 0.045, 0.05), (port.x, 0.045, 0.05), "front-classic", False, walnut,
-         "000001.jpg", wall_on=False)
+         "delano-victory-garden.jpg", wall_on=False)
     if only is None or "section" in only:
         import subprocess
         png = sc.render.filepath
