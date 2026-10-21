@@ -127,6 +127,8 @@ def check_visibility(parts, out, p):
         for key, ob in device.items():
             ob.data.materials.clear()
             ob.data.materials.append(materials[key])
+            for face in ob.data.polygons:
+                face.material_index = 0
         camera = bpy.data.cameras.new("mask-camera")
         camera.type = "ORTHO"
         camera.ortho_scale = max(p["H"] + p.get("LEG_H", 0), (p["W"] + 20) * HEIGHT / WIDTH) * 0.0011

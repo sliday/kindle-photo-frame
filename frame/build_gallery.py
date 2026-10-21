@@ -2,7 +2,7 @@
 
     blender -b -P build_gallery.py -- print/gallery [--check] [--render] [--quick]
 
-X right, Y depth (front at zero), Z up. Export both parts face down.
+X right, Y depth (front at zero), Z up. Export the single part face down.
 """
 import math
 import os
@@ -15,7 +15,7 @@ from mathutils import Matrix
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from geom import apply_boolean, box, cylinder_y, loft, prism, rect_skeleton, rounded  # noqa: E402
-from sliding import SlidingBack  # noqa: E402
+from kindle_profile import K_W, K_H, K_D, CLEAR, channel, channel_inset, dimensions as profile_dimensions  # noqa: E402
 from feet import add_feet, stability  # noqa: E402
 
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -23,26 +23,24 @@ OUT = os.path.abspath(ARGS[0] if ARGS else "print/gallery")
 os.makedirs(OUT, exist_ok=True)
 
 # ---------------------------------------------------------------- parameters (mm)
-K_W, K_H, K_D = 116.7, 167.0, 8.18            # Kindle Paperwhite 4
 SCREEN_W, SCREEN_H = 90.6, 122.4             # active image
 BEZEL_BOTTOM = 24.4                         # Kindle bottom to image
 PORT_X, BUTTON_X = 46.35, 70.35              # from the Kindle's left edge
-CLEAR_SIDE, CLEAR_TOP = 0.4, 0.8             # pocket play
-POCKET_D = 8.5                              # Kindle depth plus play
+CLEAR_SIDE, CLEAR_TOP = CLEAR, 0.8             # pocket play
+POCKET_D = K_D + CLEAR                     # measured depth plus clearance
 MOULD = 28.0                               # side and top face widths
 BORDER = 5.0                               # black line left visible around the image (max 5)
 LOGO_GAP, LOGO_W = 6.5, 22.0               # nearest logo edge below the image; logo width
-FACE_T, BACK_T = 3.0, 3.0                  # face and back thicknesses
+FACE_T = 3.0                               # face thickness
 SIGHT_R, SIGHT_CHAMFER = 0.5, 2.0           # sight walls and face edge
 THROAT_DEPTH = FACE_T - SIGHT_CHAMFER
 OUTER_R, FRONT_CHAMFER = 1.5, 1.5           # outer corners and face edge
 LIP_MIN = 1.0                              # face overlap on pocket
 GALLERY_H, FLOOR_T = 14.0, 2.0              # cavity height and floor thickness
-GALLERY_FACE = 2.5                         # wood in front of the cable gallery
+GALLERY_FACE = FACE_T - CLEAR             # clearance before the glass datum
 PAD_W = 14.0                               # Kindle support at each end
-PLUG_H, PLUG_HALF_X, PLUG_HALF_Y = 11.5, 20.0, 4.4
+PLUG_H, PLUG_HALF_X, PLUG_HALF_Y = 11.5, 20.0, 4.2
 CABLE_D, PEN_HOLE = 4.0, 5.0                # cable and pen diameters
-EXIT_INSET, EXIT_W, EXIT_H = 21.0, 14.0, 9.0  # cable exits from Kindle edges
 LEAN = math.radians(12)                    # shelf lean
 FOOT_TOP_FRAC, FOOT_REACH = 0.55, 65.0      # foot height and shelf reach
 FOOT_T, FOOT_CENTRE, FOOT_TIP_H = 6.0, 4.5, 3.0  # thickness, side offset, tip height
@@ -51,7 +49,7 @@ EPS = 0.001                               # boolean and measurement tolerance
 
 # ---------------------------------------------------------------- derived
 D_A = FACE_T + POCKET_D
-D = D_A + BACK_T
+D = D_A
 FLOOR_Z = FLOOR_T + D_A * math.tan(LEAN)
 KZ0 = FLOOR_Z + GALLERY_H
 SX0 = MOULD + BORDER
@@ -64,13 +62,16 @@ POCKET = (KX0 - CLEAR_SIDE, KZ0, KX0 + K_W + CLEAR_SIDE, KZ0 + K_H + CLEAR_TOP)
 GALLERY = (KX0 + PAD_W, FLOOR_Z, KX0 + K_W - PAD_W, KZ0)
 PX, BX = KX0 + PORT_X, KX0 + BUTTON_X
 PORT_Y = FACE_T + K_D / 2
-CABLE_EXITS = (KX0 + EXIT_INSET, KX0 + K_W - EXIT_INSET)
 WALL_SIDE, WALL_TOP = POCKET[0], H - POCKET[3]
 BOTTOM_MOULD = SIGHT[1]
-SLIDE_BOTTOM = FLOOR_T + D * math.tan(LEAN)
-SLIDE = SlidingBack(W, H, SLIDE_BOTTOM, D_A, BACK_T)
 FOOT_TOP_Z = FOOT_TOP_FRAC * H
 FOOT_TIP_Y = FOOT_REACH * math.cos(LEAN)
+ENTRY_FRONT, ENTRY_WIDTH = FACE_T - CLEAR, K_W + 2 * CLEAR_SIDE
+assert ENTRY_WIDTH >= K_W + 2 * CLEAR and D - ENTRY_FRONT >= K_D + 2 * CLEAR - EPS, "top entry too small"
+assert H > KZ0 + K_H, "top entry does not cross the top wall"
+assert ENTRY_FRONT <= PORT_Y - PLUG_HALF_Y and PORT_Y + PLUG_HALF_Y <= D, "plug cannot enter from above"
+assert KX0 - CLEAR_SIDE <= PX - PLUG_HALF_X - CLEAR and PX + PLUG_HALF_X + CLEAR <= KX0 + K_W + CLEAR_SIDE, "plug exceeds top entry width"
+assert GALLERY_FACE >= 2.5, "plug passage leaves too little front material"
 
 assert min(SIGHT[0] - POCKET[0], SIGHT[1] - POCKET[1],
            POCKET[2] - SIGHT[2], POCKET[3] - SIGHT[3]) >= LIP_MIN, "face lip too small"
@@ -79,12 +80,8 @@ assert GALLERY[0] <= PX - PLUG_HALF_X and PX + PLUG_HALF_X <= GALLERY[2], "plug 
 assert GALLERY_FACE <= PORT_Y - PLUG_HALF_Y and PORT_Y + PLUG_HALF_Y <= D_A, "plug too deep"
 assert FLOOR_Z <= KZ0 - PLUG_H, "plug hits the gallery floor"
 assert FLOOR_Z - D_A * math.tan(LEAN) >= FLOOR_T - EPS, "gallery floor too thin"
-assert all(GALLERY[0] <= x - EXIT_W / 2 and x + EXIT_W / 2 <= GALLERY[2]
-           for x in CABLE_EXITS), "cable exit outside gallery"
-assert EXIT_W >= CABLE_D and EXIT_H >= CABLE_D, "cable exit too small"
 assert FOOT_TIP_Y > D and FOOT_TOP_Z > FOOT_TIP_Y * math.tan(LEAN) + FOOT_TIP_H, "foot reach too short"
 assert min(W, H) <= min(BED_X, BED_Y) and max(W, H) <= max(BED_X, BED_Y), "part exceeds bed"
-assert FLOOR_Z + EXIT_H - SLIDE_BOTTOM >= CABLE_D, "bottom stop blocks the cable exits"
 assert BORDER <= LOGO_GAP - 1.0, "window too close to the logo"
 assert BORDER + THROAT_DEPTH * math.tan(math.radians(45)) <= LOGO_GAP - 0.3, "logo clearance too small at 45 degrees"
 
@@ -96,11 +93,9 @@ def floor_z(y):
 
 FOOT_CENTRES = (FOOT_CENTRE, W - FOOT_CENTRE)
 FOOT_ROOT_Y = D - 0.5
-FOOT_PANEL_CLEAR = SLIDE.MARGIN + FOOT_ROOT_Y - D_A - SLIDE.diagonal_clear - (FOOT_CENTRE + FOOT_T / 2)
-assert FOOT_PANEL_CLEAR >= 0.3, "feet obstruct the sliding panel"
+FOOT_BODY_CLEAR = KX0 - CLEAR_SIDE - (FOOT_CENTRE + FOOT_T / 2)
+assert FOOT_BODY_CLEAR >= 0.3, "feet obstruct Kindle insertion"
 assert FOOT_CENTRE - FOOT_T / 2 >= 0 and FOOT_CENTRE + FOOT_T / 2 <= WALL_SIDE, "feet exceed side stiles"
-assert all(abs(x - centre) > FOOT_T / 2 + EXIT_W / 2 + 1.0
-           for x in CABLE_EXITS for centre in FOOT_CENTRES), "feet obstruct a cable exit"
 
 
 def floor_cutter():
@@ -121,33 +116,18 @@ def make_front(name):
     cut = [loft("sight", [(-1, rounded(win, -SIGHT_CHAMFER)),
                            (0, rounded(win, -SIGHT_CHAMFER)),
                            (SIGHT_CHAMFER, rounded(win)), (D_A + 1, rounded(win))])]
-    cut.append(box("pocket", POCKET[0], FACE_T, POCKET[1], POCKET[2], D_A + 1, POCKET[3]))
+    cut.append(channel("side-channels", KX0, KZ0, H + 1, FACE_T, D))
+    cut.append(box("top-entry", KX0 - CLEAR_SIDE, ENTRY_FRONT, KZ0 + K_H,
+                   KX0 + K_W + CLEAR_SIDE, D + 1, H + 1))
+    cut.append(box("plug-insertion", PX - PLUG_HALF_X - CLEAR, GALLERY_FACE, KZ0 - PLUG_H,
+                   PX + PLUG_HALF_X + CLEAR, D + 1, H + 1))
     cut.append(box("gallery", GALLERY[0], GALLERY_FACE, GALLERY[1], GALLERY[2], D_A + 1, GALLERY[3] + EPS))
     pen = cylinder_y("pen", BX, -PORT_Y, PEN_HOLE / 2, -1, KZ0)
     pen.matrix_world = Matrix.Rotation(math.pi / 2, 4, "X")
     cut.append(pen)
-    cut.append(SLIDE.groove())
-    cut += [cable_exit(x) for x in CABLE_EXITS]
     cut.append(floor_cutter())
     apply_boolean(ob, cut, "DIFFERENCE")
     add_feet(ob, FOOT_CENTRES, FOOT_T, FOOT_ROOT_Y, FOOT_TIP_Y, FOOT_TOP_Z, floor_z, FOOT_TIP_H)
-    return ob
-
-
-def cable_exit(x):
-    r = EXIT_W / 2
-    zc = FLOOR_Z + EXIT_H - r
-    pts = [(x - r, -10), (x + r, -10), (x + r, zc)]
-    pts += [(x + r * math.cos(math.pi * k / 20), zc + r * math.sin(math.pi * k / 20))
-            for k in range(1, 21)]
-    return prism("cable-exit", pts, D_A - 1, D + 1)
-
-
-def make_back(name):
-    ob = SLIDE.panel(name)
-    cut = [cable_exit(x) for x in CABLE_EXITS]
-    cut.append(floor_cutter())
-    apply_boolean(ob, cut, "DIFFERENCE")
     return ob
 
 
@@ -160,15 +140,14 @@ sc.unit_settings.length_unit = "MILLIMETERS"
 
 parts = {
     "gallery-front": make_front("gallery-front"),
-    "gallery-back": make_back("gallery-back"),
 }
 params = dict(W=W, H=H, D=D, D_A=D_A, FACE_T=FACE_T, FRONT_T=FACE_T, KX0=KX0, KZ0=KZ0,
               K_W=K_W, K_H=K_H, K_D=K_D, SX0=SX0, SZ0=SZ0, SCREEN_W=SCREEN_W,
               SCREEN_H=SCREEN_H, LEAN=LEAN, PORT_X=PX, PORT_Y=PORT_Y, GALLERY=GALLERY,
-              CABLE_EXITS=CABLE_EXITS, CABLE_D=CABLE_D, FOOT_REACH=FOOT_REACH,
+              CABLE_D=CABLE_D, FOOT_REACH=FOOT_REACH,
               BORDER=BORDER, LOGO_GAP=LOGO_GAP, LOGO_W=LOGO_W, CLEAR_SIDE=CLEAR_SIDE,
               CLEAR_TOP=CLEAR_TOP, POCKET_D=POCKET_D, THROAT_DEPTH=THROAT_DEPTH)
-params.update(SLIDE.params())
+params.update(INSERT_TRAVEL=K_H / 2, INSERT_CLEAR=H - KZ0 + 15 + PLUG_H)
 params.update(FOOT_T=FOOT_T, FOOT_REACH=FOOT_REACH, FOOT_CENTRES=FOOT_CENTRES)
 STABILITY = stability(parts, (KX0 + K_W / 2, FACE_T + K_D / 2, KZ0 + K_H / 2),
                       LEAN, 0.0, (BED_X, BED_Y))
@@ -192,7 +171,7 @@ for key, ob in parts.items():
     print(f"exported {key}.stl  size {size[0]:.3f} x {size[1]:.3f} x {size[2]:.3f} mm")
 
 dimensions = (
-    f"outer {W:.3f} wide x {H:.3f} tall; frame wall depth {D:.3f}; panel thickness {BACK_T:.3f}; pocket rear Y {D_A:.3f}\n"
+    f"outer {W:.3f} wide x {H:.3f} tall; frame wall depth {D:.3f}; pocket rear Y {D_A:.3f}\n"
     f"moulding to sight throat: sides/top {MOULD:.3f}; bottom {BOTTOM_MOULD:.3f}\n"
     f"flat face after sight bevel: sides/top {MOULD - SIGHT_CHAMFER:.3f}; bottom {BOTTOM_MOULD - SIGHT_CHAMFER:.3f}\n"
     f"walls: left/right {WALL_SIDE:.3f}; top {WALL_TOP:.3f}; Kindle bottom {KZ0:.3f}\n"
@@ -203,12 +182,12 @@ dimensions = (
     f"gallery {GALLERY[2] - GALLERY[0]:.3f} x {GALLERY_H:.3f} high x {D_A - GALLERY_FACE:.3f} deep; bounds {GALLERY}\n"
     f"gallery floor top {FLOOR_Z:.3f}; minimum floor {FLOOR_T:.3f}; end pads {PAD_W + CLEAR_SIDE:.3f} wide\n"
     f"plug {2 * PLUG_HALF_X:.3f} wide x {PLUG_H:.3f} high x {2 * PLUG_HALF_Y:.3f} deep; port ({PX:.3f}, {PORT_Y:.3f})\n"
-    f"cable exits X {CABLE_EXITS}; width {EXIT_W:.3f}; rounded top Z {FLOOR_Z + EXIT_H:.3f}; cable diameter {CABLE_D:.3f}\n"
     f"power pen hole diameter {PEN_HOLE:.3f}; centre X {BX:.3f}, Y {PORT_Y:.3f}\n"
-    f"two integral feet: thickness {FOOT_T:.3f}; centres X {FOOT_CENTRES}; root/tip Y {FOOT_ROOT_Y:.3f}/{FOOT_TIP_Y:.3f}; top Z {FOOT_TOP_Z:.3f}; tip height {FOOT_TIP_H:.3f}; shelf reach {FOOT_REACH:.3f}; panel clearance {FOOT_PANEL_CLEAR:.3f}\n"
+    f"two integral feet: thickness {FOOT_T:.3f}; centres X {FOOT_CENTRES}; root/tip Y {FOOT_ROOT_Y:.3f}/{FOOT_TIP_Y:.3f}; top Z {FOOT_TOP_Z:.3f}; tip height {FOOT_TIP_H:.3f}; shelf reach {FOOT_REACH:.3f}; body clearance {FOOT_BODY_CLEAR:.3f}\n"
     f"lean {math.degrees(LEAN):.3f} degrees; shelf plane Z = Y * tan(LEAN)\n"
 )
-dimensions += SLIDE.dimensions() + STABILITY
+dimensions += profile_dimensions() + STABILITY
+dimensions += f"rear capture at body back {channel_inset(K_D):.3f}, at frame back {channel_inset(K_D + CLEAR):.3f}; top entry width {K_W + 2 * CLEAR_SIDE:.3f}, depth {K_D + 2 * CLEAR:.3f}; insert travel {K_H / 2:.3f} mm\n"
 print(dimensions)
 with open(os.path.join(OUT, "dimensions.txt"), "w") as f:
     f.write(dimensions)

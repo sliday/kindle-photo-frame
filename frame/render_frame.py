@@ -8,12 +8,13 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
+from kindle_profile import body
+
 # public-domain samples, so committed renders never carry anyone's private photos
 PHOTO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "samples")
-EXPLODE_GAP = 90.0             # depth spacing between assembly parts, mm
-EXPLODE_BACK_LIFT = 35.0        # lift the back above its seat, mm
-EXPLODE_CABLE_RUN = 55.0        # visible cable tail behind the port, mm
-EXPLODE_FILL = 5.0              # front fill for exposed parts, watts
+ASSEMBLY_CABLE_RUN = 55.0      # visible cable tail behind the port, mm
+ASSEMBLY_FILL = 5.0            # front fill for insertion views, watts
+ASSEMBLY_HEIGHT = 2400         # portrait insertion and exploded views, pixels
 
 
 def _principled(name, color, rough):
@@ -132,11 +133,17 @@ def screen_plane(p, photo):
 def device_objects(p, photo=None):
     """The black device and its printed wordmark, in local millimetres."""
     photo = photo or os.path.join(PHOTO_DIR, "evans-boardwalk.jpg")
-    kindle = rounded_prism("kindle", p["KX0"], p["KZ0"], p["KX0"] + p["K_W"], p["KZ0"] + p["K_H"], 6.0,
-                           p["FRONT_T"], p["FRONT_T"] + p["K_D"])
+    kindle = body("kindle", p["KX0"], p["KZ0"], p["FRONT_T"])
+    shell = _principled("black-shell", (0.008, 0.008, 0.009), 0.60)
+    shell.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.2
     glass = _principled("black-glass", (0.008, 0.008, 0.008), 0.22)
     glass.node_tree.nodes["Principled BSDF"].inputs["IOR"].default_value = 1.5
+    kindle.data.materials.append(shell)
     kindle.data.materials.append(glass)
+    for face in kindle.data.polygons:
+        front = all(abs(kindle.data.vertices[i].co.y - p["FRONT_T"]) < 0.0001 for i in face.vertices)
+        face.material_index = 1 if front else 0
+        face.use_smooth = len(face.vertices) == 4 and not front
     screen = screen_plane(p, photo)
     text = bpy.data.curves.new("kindle-wordmark", "FONT")
     text.body = "kindle"
@@ -172,7 +179,7 @@ def look_at(cam, target):
 def cable_object(p, mat):
     """The worst-case straight plug and its cable, as meshes (so the cutaway can slice them)."""
     px, py = p["PORT_X"], p["PORT_Y"]
-    plug = rounded_prism("plug", px - 5.25, p["RAIL"] - p["PLUG_LEN"], px + 5.25, p["RAIL"] - 0.2, 1.5,
+    plug = rounded_prism("plug", px - 5.25, p["RAIL"] - p["PLUG_LEN"], px + 5.25, p["RAIL"], 1.5,
                          py - 3.25, py + 3.25)
     cd = bpy.data.curves.new("cable", "CURVE")
     cd.dimensions = "3D"
@@ -298,45 +305,45 @@ def _stage(p, quick):
                 floor=floor, wall=wall, cam=cam, cam_d=cam_d)
 
 
-def _exploded(parts, stage, p, plug, cable, shot, filename, back_name, only):
+def _lifted_view(parts, stage, p, plug, cable, shot, filename, travel, only):
     if only and only not in filename:
         return
     root, sc, cam = (stage[k] for k in ("root", "sc", "cam"))
     device = [stage[k] for k in ("kindle", "screen", "logo")]
     objects = list(parts.values()) + device + [plug, cable]
     saved = {ob: ob.matrix_basis.copy() for ob in objects}
-    root_matrix = root.matrix_world.copy()
     resolution = (sc.render.resolution_x, sc.render.resolution_y)
     sensor_fit = cam.data.sensor_fit
     cable_mesh = cable.data
     fill = bpy.data.objects["fill"]
-    fill_matrix, fill_energy = fill.matrix_world.copy(), fill.data.energy
+    fill_matrix, fill_energy, fill_size = fill.matrix_world.copy(), fill.data.energy, fill.data.size
+    key = bpy.data.objects["key"]
+    key_matrix = key.matrix_world.copy()
     try:
         cable.data = cable_mesh.copy()
         bm = bmesh.new()
         bm.from_mesh(cable.data)
         cut = bmesh.ops.bisect_plane(bm, geom=list(bm.verts) + list(bm.edges) + list(bm.faces),
-                                    plane_co=(0, p["PORT_Y"] + EXPLODE_CABLE_RUN, 0),
+                                    plane_co=(0, p["PORT_Y"] + ASSEMBLY_CABLE_RUN, 0),
                                     plane_no=(0, 1, 0), clear_outer=True, dist=0.00001)
         boundary = [edge for edge in cut["geom_cut"] if isinstance(edge, bmesh.types.BMEdge) and edge.is_boundary]
         if boundary:
             bmesh.ops.holes_fill(bm, edges=boundary)
         bm.to_mesh(cable.data)
         bm.free()
-        device_lift = EXPLODE_GAP * math.tan(p["LEAN"]) + 20.0
         for ob in device + [plug, cable]:
-            ob.matrix_basis = Matrix.Translation((0, EXPLODE_GAP, device_lift)) @ saved[ob]
-        parts[back_name].location.y += 2 * EXPLODE_GAP
-        parts[back_name].location.z += EXPLODE_BACK_LIFT + 2 * EXPLODE_GAP * math.tan(p["LEAN"])
-        sc.render.resolution_x, sc.render.resolution_y = 1600, 1200
+            ob.matrix_basis = Matrix.Translation((0, 0, travel)) @ saved[ob]
+        sc.render.resolution_x, sc.render.resolution_y = 1000, ASSEMBLY_HEIGHT
         cam.data.lens = 80
         cam.data.sensor_fit = "HORIZONTAL"
         bpy.context.view_layer.update()
-        points = [ob.matrix_world @ Vector(corner) for ob in list(parts.values()) + device for corner in ob.bound_box]
+        assembly_points = [ob.matrix_world @ Vector(corner) for ob in list(parts.values()) + device for corner in ob.bound_box]
+        points = assembly_points + [ob.matrix_world @ Vector(corner) for ob in (plug, cable) for corner in ob.bound_box]
         lo = Vector(tuple(min(pt[i] for pt in points) for i in range(3)))
         hi = Vector(tuple(max(pt[i] for pt in points) for i in range(3)))
         target = (lo + hi) / 2
-        direction = Vector((-0.86, -0.48, 0.20)).normalized()
+        rear = "insert" in filename
+        direction = Vector((0.56, 0.80, 0.22) if rear else (0.42, -0.90, 0.16)).normalized()
         cam.location = target + direction
         look_at(cam, target)
         rotation = cam.rotation_euler.to_matrix()
@@ -345,8 +352,8 @@ def _exploded(parts, stage, p, plug, cable, shot, filename, back_name, only):
         ys = [(pt - target).dot(up) for pt in points]
         target += right * (min(xs) + max(xs)) / 2 + up * (min(ys) + max(ys)) / 2
         span_x, span_y = max(xs) - min(xs), max(ys) - min(ys)
-        aspect = min(4 / 3, max(0.9, span_x / span_y))
-        sc.render.resolution_y = round(sc.render.resolution_x / aspect)
+        aspect = min(0.8, span_x / span_y)
+        sc.render.resolution_x = round(sc.render.resolution_y * aspect)
         tan_x = cam.data.sensor_width / (2 * cam.data.lens)
         tan_y = tan_x * sc.render.resolution_y / sc.render.resolution_x
         distance = 1.12 * max(max(abs((pt - target).dot(right)) / tan_x,
@@ -356,12 +363,18 @@ def _exploded(parts, stage, p, plug, cable, shot, filename, back_name, only):
         look_at(cam, target)
         bpy.context.view_layer.update()
         from bpy_extras.object_utils import world_to_camera_view
-        projected = [world_to_camera_view(sc, cam, pt) for pt in points]
+        projected = [world_to_camera_view(sc, cam, pt) for pt in assembly_points]
+        bounds = [world_to_camera_view(sc, cam, pt) for pt in points]
+        assert all(0.01 <= pt.x <= 0.99 and 0.01 <= pt.y <= 0.99 for pt in bounds), "assembly or cable cropped"
         coverage = max(pt.x for pt in projected) - min(pt.x for pt in projected)
-        assert coverage >= 0.70, f"exploded width coverage {coverage:.1%} is below 70%"
+        assert coverage >= 0.70, f"assembly width coverage {coverage:.1%} is below 70%"
         print(f"{filename}: projected width coverage {coverage:.1%}; {sc.render.resolution_x} x {sc.render.resolution_y}")
-        fill.location = target + Vector((0.35, -0.45, 0.45))
-        fill.data.energy = EXPLODE_FILL
+        fill.location = target + Vector((0.35, 0.45, 0.45) if rear else (0.45, -0.20, 0.35))
+        fill.data.energy = ASSEMBLY_FILL
+        if not rear:
+            fill.data.size = 0.35
+            key.location = target + Vector((0.55, -0.45, 0.55))
+            look_at(key, target)
         look_at(fill, target)
         shot(filename, cam.location.copy(), target, wall_on=False)
     finally:
@@ -369,10 +382,10 @@ def _exploded(parts, stage, p, plug, cable, shot, filename, back_name, only):
         cable.data = cable_mesh
         if clipped_mesh != cable_mesh:
             bpy.data.meshes.remove(clipped_mesh)
-        fill.matrix_world, fill.data.energy = fill_matrix, fill_energy
+        fill.matrix_world, fill.data.energy, fill.data.size = fill_matrix, fill_energy, fill_size
+        key.matrix_world = key_matrix
         for ob, matrix in saved.items():
             ob.matrix_basis = matrix
-        root.matrix_world = root_matrix
         sc.render.resolution_x, sc.render.resolution_y = resolution
         cam.data.sensor_fit = sensor_fit
         bpy.context.view_layer.update()
@@ -403,22 +416,14 @@ def render(parts, out, p, quick=False, only=None):
 
     tgt = (p["W"] * 0.0005, 0.02, 0.110)
     # a small yaw: steeper views look through the leg gaps at the cable lying behind the left leg
-    shot("render-walnut.png", (tgt[0] + 0.10, -0.78, 0.22), tgt)
+    shot("render-walnut.png", (tgt[0] + 0.025, -0.78, 0.22), tgt)
     shot("render-back.png", (0.46, 0.70, 0.24), (tgt[0], 0.03, 0.10), wall_on=False)
-    parts["back"].location.z += p["SLIDE_TRAVEL"]
-    slide_target = root.matrix_world @ Vector((p["W"] / 2, p["D"] / 2,
-                                               (p["H"] + p["SLIDE_TRAVEL"] - p["LEG_H"]) / 2))
-    slide_distance = max(1.0, (p["H"] + p["SLIDE_TRAVEL"] + p["LEG_H"]) * 0.0035)
-    slide_camera = slide_target + Vector((0.56, 0.80, 0.22)).normalized() * slide_distance
-    try:
-        shot("render-slide.png", slide_camera, slide_target, wall_on=False)
-    finally:
-        parts["back"].location.z -= p["SLIDE_TRAVEL"]
+    _lifted_view(parts, S, p, plug, cable, shot, "render-insert.png", p["INSERT_TRAVEL"], only)
     front_target = root.matrix_world @ Vector((p["W"] / 2, 0, (p["H"] - p["LEG_H"]) / 2))
     front_normal = root.matrix_world.to_3x3() @ Vector((0, -1, 0))
     shot("render-front.png", front_target + front_normal.normalized() * 0.82, front_target)
     shot("render-cable.png", (0.30, 0.60, 0.17), (0.065, 0.045, 0.07), wall_on=False)
-    _exploded(parts, S, p, plug, cable, shot, "render-exploded.png", "back", only)
+    _lifted_view(parts, S, p, plug, cable, shot, "render-exploded.png", p["INSERT_CLEAR"], only)
 
     if only and "section" not in only:
         return
@@ -429,7 +434,7 @@ def render(parts, out, p, quick=False, only=None):
                rounded_prism("cut-b", -2000, -2000, p["PORT_X"] - 14, 2000, 1.0, -2000, 2000)]
     for c in cutters:
         c.parent, c.hide_render = root, True
-    for ob in (parts["front"], parts["back"], kindle, plug, cable, floor):
+    for ob in (parts["front"], kindle, plug, cable, floor):
         for c in cutters:
             mod = ob.modifiers.new(c.name, "BOOLEAN")
             mod.operation, mod.solver, mod.object = "DIFFERENCE", "EXACT", c
@@ -459,7 +464,7 @@ def render(parts, out, p, quick=False, only=None):
         import subprocess
         png = sc.render.filepath
         subprocess.run(["magick", png, "-background", "white", "-flatten", png], check=True)
-        i_slot = min(range(len(ys)), key=lambda i: abs(ys[i] - (p["D"] - 1.5)))  # cable inside the back plate
+        i_slot = min(range(len(ys)), key=lambda i: abs(ys[i] - (p["D"] - 1.5)))  # cable behind the leg
         font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "filmframe", "assets", "Inter-Regular.ttf")
         on_shelf = lambda t: world_of(ys[-2] + t * (ys[-1] - ys[-2]), zs[-2] + t * (zs[-1] - zs[-2]))
         annotate(png, cam, [
@@ -473,26 +478,24 @@ def render(parts, out, p, quick=False, only=None):
 
 
 def right_angle_cable(p, mat):
-    """A 90-degree micro-USB plug turned toward the nearer cable exit, its cable along the gallery
-    floor, out through the notch in the back and onto the shelf."""
+    """A right-angle plug with its cable through the open rear and onto the shelf."""
     px, py, kz0, d = p["PORT_X"], p["PORT_Y"], p["KZ0"], p["D"]
     gz0 = p["GALLERY"][1]
-    ex = min(p["CABLE_EXITS"], key=lambda x: abs(x - px))
-    s = -1 if ex < px else 1                       # the side the plug turns to
-    plug = rounded_prism("plug", min(px - 4 * s, px + 15 * s), kz0 - 10.5, max(px - 4 * s, px + 15 * s),
-                         kz0 - 0.3, 2.0, py - 3.5, py + 3.5)
-    zc = gz0 + 5.0                                 # threads the notch below its arch
+    s = -1 if px < (p["GALLERY"][0] + p["GALLERY"][2]) / 2 else 1
+    plug = rounded_prism("plug", min(px - 4 * s, px + 15 * s), kz0 - 11.5, max(px - 4 * s, px + 15 * s),
+                         kz0, 2.0, py - 4.2, py + 4.2)
+    zc = gz0 + 5.0
     shelf = lambda y: y * math.tan(p["LEAN"]) + 2.0 / math.cos(p["LEAN"])
 
     def bez(a, b, c, e, n=12):
         return [tuple((1 - t) ** 3 * a[i] + 3 * (1 - t) ** 2 * t * b[i] + 3 * (1 - t) * t * t * c[i] + t ** 3 * e[i]
                       for i in range(3)) for t in (k / n for k in range(n + 1))]
-    # one smooth bend from the plug's side into the notch, measured from where the exit really is
-    x0, y_turn = px + 15 * s, p["D_A"] + 1.0
-    pts = bez((x0, py, kz0 - 6), (x0 + 0.6 * (ex - x0), py, kz0 - 6),
-              (ex, max(py, y_turn - 0.6 * abs(ex - x0)), zc), (ex, y_turn, zc))
-    y1 = d + 3                                     # out of the back plate, down onto the shelf
-    pts += bez((ex, y1, zc), (ex, y1 + 6, zc), (ex, y1 + 6, shelf(y1 + 12)), (ex, y1 + 14, shelf(y1 + 14)), 8)
+    x0, ex = px + 15 * s, px + 23 * s
+    y_turn = max(d + 3, py + 8)
+    pts = bez((x0, py, kz0 - 6), (x0 + 4 * s, py, kz0 - 6),
+              (ex, y_turn - 5, zc), (ex, y_turn, zc))
+    pts += bez((ex, y_turn, zc), (ex, y_turn + 6, zc),
+               (ex, y_turn + 12, shelf(y_turn + 20)), (ex, y_turn + 20, shelf(y_turn + 20)), 8)[1:]
     pts.append((ex, d + 170, shelf(d + 170)))
     cd = bpy.data.curves.new("cable", "CURVE")
     cd.dimensions, cd.bevel_depth, cd.bevel_resolution, cd.use_fill_caps = "3D", 2.0, 4, True
@@ -592,15 +595,8 @@ def render_gallery(parts, out, p, quick=False, only=None):
     front_normal = root.matrix_world.to_3x3() @ Vector((0, -1, 0))
     shot("render-gallery-front.png", centre + front_normal.normalized() * 0.78, centre, lens=85)
     shot("render-gallery-back.png", (0.46, 0.68, 0.24), world_of(p["W"] / 2, p["D"], p["H"] * 0.45), wall_on=False)
-    parts["gallery-back"].location.z += p["SLIDE_TRAVEL"]
-    slide_target = world_of(p["W"] / 2, p["D"] / 2, (p["H"] + p["SLIDE_TRAVEL"]) / 2)
-    slide_distance = max(1.0, (p["H"] + p["SLIDE_TRAVEL"]) * 0.0035)
-    slide_camera = slide_target + Vector((0.56, 0.80, 0.22)).normalized() * slide_distance
-    try:
-        shot("render-gallery-slide.png", slide_camera, slide_target, wall_on=False)
-    finally:
-        parts["gallery-back"].location.z -= p["SLIDE_TRAVEL"]
-    _exploded(parts, S, p, plug, cable, shot, "render-gallery-exploded.png", "gallery-back", only)
+    _lifted_view(parts, S, p, plug, cable, shot, "render-gallery-insert.png", p["INSERT_TRAVEL"], only)
+    _lifted_view(parts, S, p, plug, cable, shot, "render-gallery-exploded.png", p["INSERT_CLEAR"], only)
 
     # a styled shelf: the slab gets a visible front edge, a stack of books and a vase keep it company
     if not only or "shelf" in only:
@@ -669,12 +665,8 @@ def render_gallery(parts, out, p, quick=False, only=None):
     if shot("render-gallery-cable.png", (-0.04, -0.60, 0.13), world_of(p["W"] * 0.5, p["D"] / 2, p["KZ0"] * 1.6),
             wall_on=False, lens=80):
         font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "filmframe", "assets", "Inter-Regular.ttf")
-        gz0 = p["GALLERY"][1]
-        far = max(p["CABLE_EXITS"], key=lambda x: abs(x - p["PORT_X"]))
         annotate(sc.render.filepath, cam, [
-            ("90° micro-USB plug", world_of(p["PORT_X"], p["PORT_Y"] - 3.5, p["KZ0"] - 5), (260, -200)),
-            ("the cable turns out through the back", world_of(*pts[6]), (-40, 170)),
-            (f"second exit, for a plug that turns {'right' if far > p['PORT_X'] else 'left'}",
-             world_of(far, p["D_A"], gz0 + 5), (-200, 110)),
+            ("90° micro-USB plug", world_of(p["PORT_X"], p["PORT_Y"] - 4.2, p["KZ0"] - 5), (260, -200)),
+            ("cable through the open rear", world_of(*pts[12]), (-40, 170)),
         ], font)
         print("annotated render-gallery-cable.png")

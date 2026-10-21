@@ -14,7 +14,7 @@ Your film photos on a device you already own. Film Frame turns a Kindle Paperwhi
 
 ![overlay on three photos](docs/overlay-stills.png)
 
-**In a frame you print.** Two walnut stands hide the Kindle except a 5 mm black line around the photo, so the logo stays covered, and both hide the charger cable. Each is two printed parts: no screws, no glue.
+**In a frame you print.** Two walnut stands hide the Kindle except a 5 mm black line around the photo, so the logo stays covered, and both hide the charger cable. Each is one printed part: no screws, no glue, no back panel.
 
 | Gallery | Bot |
 |---|---|
@@ -23,9 +23,9 @@ Your film photos on a device you already own. Film Frame turns a Kindle Paperwhi
 | ![cable in the gallery frame](frame/print/gallery/render-gallery-cable.png) | ![cable in the bot stand](frame/print/render-section.png) |
 | A 90° micro-USB plug turns along the bottom rail; the cable runs inside the rail and leaves through the back. | A straight plug drops into a hollow leg; the cable leaves through the back of its foot. |
 
-The back of each stand is a flat panel that slides down into grooves and stays put by gravity:
+The Kindle drops in from the top. Channels in the side walls follow its own rounded edges, so it slides down and stands on the bottom rail; lips behind its widest point keep it from falling out backward, and its own back closes the frame:
 
-![exploded view of the gallery frame](frame/print/gallery/render-gallery-exploded.png)
+![the Kindle dropping into the gallery frame](frame/print/gallery/render-gallery-insert.png)
 
 Print files and notes for whoever prints them: [frame/PRINTING.md](frame/PRINTING.md).
 

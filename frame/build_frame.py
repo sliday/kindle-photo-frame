@@ -2,10 +2,9 @@
 
     blender -b -P build_frame.py -- <out_dir> [--check] [--render]
 
-The outline is the Claude Code bot: a body with two side arms and four legs. The gap
-between the middle legs is the charger opening. Parts print without supports:
+The outline is the Claude Code bot: a body with two side arms and four legs.
+The cable passes through an open channel in one leg. Print the single part without supports:
   front.stl         front face down (5 mm black line around the image)
-  back.stl          inner face down
 Coordinates: X right, Y depth (front face at Y=0, back is +Y), Z up, as seen from the front.
 """
 import math
@@ -19,7 +18,7 @@ from mathutils import Matrix, Vector
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from geom import apply_boolean, box, cylinder_y, loft, prism, rect_skeleton, rounded  # noqa: E402
-from sliding import SlidingBack  # noqa: E402
+from kindle_profile import K_W, K_H, K_D, CLEAR, channel, channel_inset, dimensions as profile_dimensions  # noqa: E402
 from feet import add_feet, stability  # noqa: E402
 
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -28,30 +27,26 @@ RENDER = "--render" in ARGS
 os.makedirs(OUT, exist_ok=True)
 
 # ---------------------------------------------------------------- parameters (mm)
-# Kindle Paperwhite 4: width from the measured STEP model (Printables #1061750, public domain;
-# Amazon's spec says 116), height and thickness from Amazon's spec (STEP: 166.6 x 7.85).
-K_W, K_H, K_D = 116.7, 167.0, 8.18
 SCREEN_W, SCREEN_H = 90.6, 122.4              # active area, E Ink 6" 1072x1448 panel datasheets
 BEZEL_SIDE = (K_W - SCREEN_W) / 2             # screen is centred left-right (STEP)
 BEZEL_BOTTOM = 24.4                           # Kindle bottom edge -> image bottom (STEP screen centre)
 PORT_X, BUTTON_X = 46.35, 70.35               # micro-USB and power button on the bottom edge, from the left (STEP)
-CLEAR_SIDE, CLEAR_TOP = 0.4, 0.8              # pocket play
-POCKET_D = 8.5                                # Kindle 8.18 + play
-FRONT_T, BACK_T = 2.4, 3.0                    # plate thicknesses
-WALL_SIDE, WALL_TOP = 12.0, 3.0                # side walls enclose the sliding back
+CLEAR_SIDE, CLEAR_TOP = CLEAR, 0.8              # pocket play
+POCKET_D = K_D + CLEAR                       # measured depth plus clearance
+FRONT_T = 2.4                                # face thickness
+WALL_SIDE, WALL_TOP = 12.0, 3.0                # side walls retain the Kindle
 RAIL = 10.0                                   # solid rail under the Kindle
-# Legs. The cable hides inside the leg under the micro-USB port: the plug and cable drop down a
-# channel closed at the front and leave through the back of that leg's foot (the owner's pick).
+# Legs. The plug and cable drop through the leg under the micro-USB port.
+# The front wall conceals the cable; the channel remains open at the rear.
 # The port and power button sit mirrored, 12 mm either side of the Kindle's centre, so:
 #   mirror: inner legs under the port and under the button (symmetric; button pressed with a pen)
 #   walk:   only the cable leg moves; the other inner leg keeps the bot's position, button in the gap
 LEG_LAYOUT = next((a.split("=", 1)[1] for a in ARGS if a.startswith("--legs=")), "mirror")
 LEG_H, LEG_W = 36.0, 16.0
 CABLE_LEG_HALF = 6.0                          # channel inside the leg: 12 mm wide, 2 mm walls
-CABLE_EXIT_W, CABLE_EXIT_H = 7.0, 12.0        # slot at the back of the foot
 PLUG_LEN, CABLE_BEND_R, CABLE_D = 25.0, 10.0, 4.0  # worst-case straight plug, for the clearance check
 PLUG_HALF_W, PLUG_HALF_D = 5.25, 3.25         # straight plug envelope
-ROOF_T, PLUG_CLEAR, PEN_ROOF_FLAT = 1.0, 0.3, 0.4  # rear roof, plug clearance, pen roof span
+PLUG_CLEAR = 0.3                             # clearance around the plug
 BUTTON_POCKET, PEN_HOLE = 2.5, 5.0            # the button sticks out 0.6 mm: keep it off the rail
 ARM_OUT = 9.0
 ARM_FRAC = (0.58, 0.75)                       # arm span as a share of body height, from the bottom
@@ -77,8 +72,10 @@ SX0, SX1 = KX0 + BEZEL_SIDE, KX0 + BEZEL_SIDE + SCREEN_W
 SZ0 = KZ0 + BEZEL_BOTTOM                      # the Kindle stands on the rail, so measure from its bottom
 SZ1 = SZ0 + SCREEN_H
 D_A = FRONT_T + POCKET_D
-D = D_A + BACK_T
-SLIDE = SlidingBack(W, H, RAIL, D_A, BACK_T)
+D = D_A
+ENTRY_FRONT, ENTRY_WIDTH = FRONT_T, K_W + 2 * CLEAR_SIDE
+assert ENTRY_WIDTH >= K_W + 2 * CLEAR and D - ENTRY_FRONT >= K_D + CLEAR - 1e-6, "top entry too small"
+assert H > KZ1, "top entry does not cross the top wall"
 PX, BX = KX0 + PORT_X, KX0 + BUTTON_X          # port and button in frame coordinates
 if LEG_LAYOUT == "mirror":
     _inner = [(PX - LEG_W / 2, PX + LEG_W / 2), (BX - LEG_W / 2, BX + LEG_W / 2)]
@@ -129,19 +126,18 @@ def floor_z(y):
 FOOT_CENTRES = (FOOT_CENTRE, W - FOOT_CENTRE)
 FOOT_ROOT_Y = D - 0.5
 FOOT_TIP_Y = (FOOT_REACH + LEG_H * math.sin(LEAN)) * math.cos(LEAN)
-FOOT_PANEL_CLEAR = SLIDE.MARGIN + FOOT_ROOT_Y - D_A - SLIDE.diagonal_clear - (FOOT_CENTRE + FOOT_T / 2)
-assert FOOT_PANEL_CLEAR >= 0.3, "feet obstruct the sliding panel"
+FOOT_BODY_CLEAR = KX0 - CLEAR_SIDE - (FOOT_CENTRE + FOOT_T / 2)
+assert FOOT_BODY_CLEAR >= 0.3, "feet obstruct Kindle insertion"
 assert FOOT_CENTRE - FOOT_T / 2 >= 0 and FOOT_CENTRE + FOOT_T / 2 <= LEG_W, "feet exceed outer legs"
-assert all(abs(x - PX) - FOOT_T / 2 - max(CABLE_LEG_HALF, CABLE_EXIT_W / 2, CABLE_D / 2) >= 1.0
+assert all(abs(x - PX) - FOOT_T / 2 - max(CABLE_LEG_HALF, CABLE_D / 2) >= 1.0
            for x in FOOT_CENTRES), "feet obstruct the cable path"
 
 
 PORT_Y = FRONT_T + K_D / 2                    # port centre, halfway through the Kindle
-ROOF_START = PORT_Y + PLUG_HALF_D + PLUG_CLEAR
-ROOF_END = D - ROOF_T
-ROOF_SPAN = 2 * (CABLE_LEG_HALF - (ROOF_END - ROOF_START))
-assert 0 < ROOF_SPAN <= 10.0 and ROOF_T >= 1.0, "cable roof cannot bridge without supports"
 assert FRONT_T + PLUG_CLEAR <= PORT_Y - PLUG_HALF_D, "plug hits the front of the cable leg"
+assert PORT_Y + PLUG_HALF_D + PLUG_CLEAR <= D, "plug extends beyond the insertion passage"
+assert KX0 - CLEAR_SIDE <= PX - PLUG_HALF_W - PLUG_CLEAR and PX + PLUG_HALF_W + PLUG_CLEAR <= KX0 + K_W + CLEAR_SIDE
+
 
 
 def cable_path(plug_len=PLUG_LEN, r=CABLE_BEND_R, run=150.0, steps=18):
@@ -197,46 +193,26 @@ def body_rings(y_front, y_back, round_front, round_back):
     return rings
 
 
-def roof_channel(name, cx, half, z0, z1, front, start, end, radius):
-    rings = []
-    for y, width in ((front, half), (start, half), (end, half - (end - start))):
-        assert width > 0, "channel roof closes before its final layer"
-        rings.append((y, rounded(rect_skeleton(cx - width, z0, cx + width, z1, min(radius, width / 2)))))
-    return loft(name, rings)
-
-
 def make_front(name):
     ob = loft(name, body_rings(0.0, D, True, False))
     wx0, wz0, wx1, wz1 = SX0 - BORDER, SZ0 - BORDER, SX1 + BORDER, SZ1 + BORDER
     win = rect_skeleton(wx0, wz0, wx1, wz1, 1.0)
     cut = [loft("window", [(-1.0, rounded(win, -(WINDOW_BEVEL + 1.0))),
                            (WINDOW_BEVEL, rounded(win)), (D_A + 1, rounded(win))])]
-    cut.append(box("pocket", WALL_SIDE, FRONT_T, RAIL, W - WALL_SIDE, D_A + 1, POCKET_Z1, 6.5))
-    cut.append(roof_channel("cable-channel", PX, CABLE_LEG_HALF, -LEG_H - 12, RAIL + 0.5,
-                            FRONT_T, ROOF_START, ROOF_END, 2.0))
-    # a pocket keeps the Kindle's weight off its power button; a pen hole from below presses it
-    cut.append(roof_channel("button-pocket", BX, 4.5, RAIL - BUTTON_POCKET, RAIL + 0.5,
-                            FRONT_T, ROOF_START, ROOF_END, 1.0))
-    pen_start = PORT_Y + PEN_HOLE / 2
-    cut.append(roof_channel("pen-hole", BX, PEN_HOLE / 2, -LEG_H - 12, RAIL - 1,
-                            PORT_Y - PEN_HOLE / 2, pen_start, pen_start + (PEN_HOLE - PEN_ROOF_FLAT) / 2, 0.0))
-    cut.append(SLIDE.groove())
-    cut.append(box("cable-exit", PX - CABLE_EXIT_W / 2, D_A - 1, -LEG_H - 12, PX + CABLE_EXIT_W / 2, D + 1,
-                   -LEG_H + CABLE_EXIT_H, CABLE_EXIT_W / 2 - 0.05))
+    cut.append(channel("side-channels", KX0, RAIL, H + 1, FRONT_T, D))
+    cut.append(box("top-entry", KX0 - CLEAR_SIDE, ENTRY_FRONT, KZ1,
+                   KX0 + K_W + CLEAR_SIDE, D + 1, H + 1))
+    cut.append(box("cable-channel", PX - CABLE_LEG_HALF, FRONT_T, -LEG_H - 12,
+                   PX + CABLE_LEG_HALF, D + 1, RAIL + 2.0, 2.0))
+    cut.append(box("button-pocket", BX - 4.5, FRONT_T, RAIL - BUTTON_POCKET,
+                   BX + 4.5, D + 1, RAIL + 0.5, 1.0))
+    cut.append(box("pen-hole", BX - PEN_HOLE / 2, PORT_Y - PEN_HOLE / 2, -LEG_H - 12,
+                   BX + PEN_HOLE / 2, D + 1, RAIL - 1))
     eye_z = (wz1 + H) / 2
     cut += eye_cutters(0.27 * W, eye_z, True) + eye_cutters(0.73 * W, eye_z, False)
     cut.append(floor_cutter("floor"))
     apply_boolean(ob, cut, "DIFFERENCE")
     add_feet(ob, FOOT_CENTRES, FOOT_T, FOOT_ROOT_Y, FOOT_TIP_Y, FOOT_TOP_Z, floor_z, FOOT_TIP_H)
-    return ob
-
-
-def make_back(name):
-    ob = SLIDE.panel(name)
-    cut = [box("panel-cable-notch", PX - CABLE_EXIT_W / 2, D_A - 1, RAIL - 1,
-               PX + CABLE_EXIT_W / 2, D + 1, RAIL + 0.5),
-           cylinder_y("panel-cable-notch-top", PX, RAIL + 0.5, CABLE_EXIT_W / 2, D_A - 1, D + 1)]
-    apply_boolean(ob, cut, "DIFFERENCE")
     return ob
 
 
@@ -249,7 +225,6 @@ sc.unit_settings.length_unit = "MILLIMETERS"
 
 parts = {
     "front": make_front("front"),
-    "back": make_back("back"),
 }
 params = dict(W=W, H=H, D=D, D_A=D_A, FRONT_T=FRONT_T, KX0=KX0, KZ0=KZ0,
               K_W=K_W, K_H=K_H, K_D=K_D, SX0=SX0, SZ0=SZ0, SCREEN_W=SCREEN_W,
@@ -258,7 +233,7 @@ params = dict(W=W, H=H, D=D, D_A=D_A, FRONT_T=FRONT_T, KX0=KX0, KZ0=KZ0,
               CABLE_D=CABLE_D, CABLE=cable_path()[0], SPARE=_spare,
               BORDER=BORDER, LOGO_GAP=LOGO_GAP, LOGO_W=LOGO_W, CLEAR_SIDE=CLEAR_SIDE,
               CLEAR_TOP=CLEAR_TOP, POCKET_D=POCKET_D, THROAT_DEPTH=THROAT_DEPTH)
-params.update(SLIDE.params())
+params.update(INSERT_TRAVEL=K_H / 2, INSERT_CLEAR=H - KZ0 + 15 + PLUG_LEN)
 params.update(FOOT_T=FOOT_T, FOOT_REACH=FOOT_REACH, FOOT_CENTRES=FOOT_CENTRES)
 STABILITY = stability(parts, (KX0 + K_W / 2, FRONT_T + K_D / 2, KZ0 + K_H / 2),
                       LEAN, LEG_H * math.cos(LEAN), (BED_X, BED_Y))
@@ -276,7 +251,6 @@ def export_stl(ob, path):
 # print orientation: flat face on the bed (Z=0), mm
 orient = {
     "front": Matrix.Rotation(math.pi / 2, 4, "X"),                # front face down
-    "back": Matrix.Rotation(math.pi / 2, 4, "X"),                  # inner face down
 }
 for key, ob in parts.items():
     keep = ob.matrix_world.copy()
@@ -292,22 +266,21 @@ for key, ob in parts.items():
 
 with open(os.path.join(OUT, "dimensions.txt"), "w") as f:
     f.write(f"frame body {W:.1f} wide x {H + LEG_H:.1f} tall incl. legs, {W + 2*ARM_OUT:.1f} wide incl. arms\n")
-    f.write(f"frame wall depth {D:.1f}; panel thickness {BACK_T:.1f}; pocket rear Y {D_A:.1f}\n")
-    f.write(f"two integral feet: thickness {FOOT_T:.3f}; centres X {FOOT_CENTRES}; root/tip Y {FOOT_ROOT_Y:.3f}/{FOOT_TIP_Y:.3f}; top Z {FOOT_TOP_Z:.3f}; tip height {FOOT_TIP_H:.3f}; shelf reach {FOOT_REACH:.3f}; panel clearance {FOOT_PANEL_CLEAR:.3f}\n")
+    f.write(f"frame wall depth {D:.1f}; pocket rear Y {D_A:.1f}\n")
+    f.write(f"two integral feet: thickness {FOOT_T:.3f}; centres X {FOOT_CENTRES}; root/tip Y {FOOT_ROOT_Y:.3f}/{FOOT_TIP_Y:.3f}; top Z {FOOT_TOP_Z:.3f}; tip height {FOOT_TIP_H:.3f}; shelf reach {FOOT_REACH:.3f}; body clearance {FOOT_BODY_CLEAR:.3f}\n")
     f.write(f"image window {SCREEN_W + 2*BORDER:.1f} x {SCREEN_H + 2*BORDER:.1f}, black line {BORDER} mm\n")
     f.write(f"logo width {LOGO_W:.1f}; gap below image {LOGO_GAP:.1f}; throat depth {THROAT_DEPTH:.1f}\n")
     f.write(f"Kindle pocket {K_W + 2*CLEAR_SIDE:.1f} x {K_H + CLEAR_TOP:.1f} x {POCKET_D}\n")
-    f.write(SLIDE.dimensions())
+    f.write(profile_dimensions())
+    f.write(f"rear capture at body back {channel_inset(K_D):.3f}, at frame back {channel_inset(K_D + CLEAR):.3f}; top entry width {K_W + 2 * CLEAR_SIDE:.3f}, depth {POCKET_D:.3f}; insert travel {K_H / 2:.3f} mm\n")
     f.write(STABILITY)
-    f.write("bot back: plain sliding panel; front feet behind the outer legs; fixed leg covers retain the concealed cable\n")
-    f.write(f"panel cable notch {CABLE_EXIT_W:.1f} wide x 4.0 high at the bottom rail; fixed cable outlet remains in the foot\n")
-    f.write(f"leg roofs: 45 degree slopes; cable roof starts at Y {ROOF_START:.2f}, ends at {ROOF_END:.2f}; flat span {ROOF_SPAN:.2f}; rear cover {ROOF_T:.1f}; pen roof span {PEN_ROOF_FLAT:.1f} mm\n")
+    f.write("one-piece open back; open cable leg; rear side lips retain the Kindle\n")
     f.write(f"image bottom edge sits {BEZEL_BOTTOM} mm above the Kindle's bottom edge (STEP model)\n")
     f.write(f"legs ({LEG_LAYOUT}): {', '.join(f'{a:.1f}..{b:.1f}' for a, b in LEGS)}; micro-USB at {PX:.1f}, "
             f"power button at {BX:.1f} (pocket {BUTTON_POCKET} mm deep, {PEN_HOLE:.0f} mm pen hole from below)\n")
-    f.write(f"cable: runs down a {2*CABLE_LEG_HALF:.0f} mm channel inside the leg under the port and leaves through "
-            f"a {CABLE_EXIT_W:.0f} x {CABLE_EXIT_H:.0f} mm slot at the back of its foot; a {PLUG_LEN:.0f} mm "
-            f"straight plug with a {CABLE_BEND_R:.0f} mm bend has {_spare:.1f} mm to spare above the shelf\n")
+    f.write(f"cable: open rear channel {2*CABLE_LEG_HALF:.0f} mm wide; {PLUG_LEN:.0f} mm straight plug; "
+            f"{CABLE_BEND_R:.0f} mm bend; shelf clearance {_spare:.1f} mm\n")
+
 
 # libraries.write skips the window-manager data, where save_as_mainfile records $HOME
 bpy.data.libraries.write(os.path.join(OUT, "film-frame.blend"), set(bpy.data.scenes), compress=True)
