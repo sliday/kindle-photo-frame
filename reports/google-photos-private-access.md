@@ -21,7 +21,7 @@ Quotes come from official Google pages first (developers.google.com, support.goo
 | Rank | Route | Delivers "add on phone, frame updates by itself"? | Open to an individual? | Official? |
 |---|---|---|---|---|
 | 1 | Ambient API (album as "media source") | Yes, exactly this | No, partner program only | Yes |
-| 2 | Browser automation of your own logged-in Google Photos session, run on a home server | Yes (latency = how often you poll) | Yes | No, ToS grey area |
+| 2 | Browser automation of your own logged-in Google Photos session, run on a home server | Yes (latency = how often you poll) | Yes | No: against Google's terms, not pursued |
 | 3 | Google's own Nest Hub / Google TV photo frame | Yes | Yes | Yes, but not on a Kindle |
 | 4 | Private Drive folder shared with a second "frame" account; Kindle reads it with `drive.readonly` | Yes, but the phone action becomes "Share to Drive folder" instead of "Add to album" | Yes (personal, unverified app) | Yes |
 | 5 | Self-hosted Immich album (or a Syncthing folder) | Yes, but the album lives outside Google Photos | Yes | Yes (no Google) |
@@ -395,7 +395,7 @@ These tools drive a logged-in Chromium and need no API:
 - [Glassick](https://github.com/xeonforcecz/glassick): 0 stars. It "syncs a Google Photos album to a local cache once a night" and warns: "Browser automation of Google Photos is a grey area under Google's ToS. Use a dedicated Google account."
 - rclone's `--gphotos-proxy` uses a headless browser too, but only for items rclone can already list.
 
-This route delivers the exact refined goal. It needs an always-on machine (Chromium will not run on the Kindle), and it stores a full Google session cookie. Every Google Photos UI change can break it.
+This route would deliver the exact refined goal, but it drives the Google Photos web app with a stored session, which Google's terms don't allow. This project does not use it.
 
 ### Immich and ImmichFrame
 
@@ -419,7 +419,7 @@ Options include a Syncthing folder, a LAN upload page served by the frame, or a 
 |---|---|---|---|---|---|
 | **Drive folder + second account, `drive.readonly`** | Medium. Cloud project, Desktop client, publish as unverified, one laptop consent for the frame account, share one folder | Share to Drive folder from Google Photos (per batch) | The frame token reads the frame account's Drive, which holds only the shared folder; photos go Drive to Kindle | Low. Stable API; token dies only on revoke or 6 months idle; the warning screen appears only at setup | Poll interval (minutes) |
 | **Picker API (QR on Kindle)** | Medium. Cloud project, Picker API, Desktop client, publish unverified, laptop consent | Scan the QR, search the album, select new photos, tap Done (per batch) | Narrowest grant: only the picked items; a copy lands on the Kindle | Low for the API; medium for UX, since session expiry (1-7 days, UNVERIFIED) and the 60-minute `baseUrl` force an immediate download | Whenever the owner picks |
-| **Browser automation on a home server** | High. Always-on box, Chromium, dedicated Google account that receives a shared album, scraper upkeep | None. Add to the album as usual | A full Google session cookie sits on your server; ToS grey area | High. UI changes break it; Google may challenge the login | Poll interval |
+| **Browser automation on a home server** | High. Always-on box, Chromium, dedicated Google account that receives a shared album, scraper upkeep | None. Add to the album as usual | A full Google session cookie sits on your server; against Google's terms, not pursued | High. UI changes break it; Google may challenge the login | Poll interval |
 | **Immich album** | High. Run Immich (Docker), phone app backup | Add to the Immich album (photos also still back up to Google Photos if wanted) | Nothing goes to Google for this path; fully self-hosted | Medium. You run the server | Seconds to minutes |
 | **Ambient API** | n/a for an individual | None | Curated items from chosen albums | Blocked: partner-only | Up to 240 list calls per device per day |
 | **Takeout scheduled** | Low | None | Full export of chosen data to Drive, Dropbox, OneDrive or Box | Low | Up to 2 months, and for 1 year only |
@@ -435,7 +435,7 @@ Routes that fail the goal are excluded: Library API app-created album, shared al
 3. **Keep the local photo set** as the fallback. Show the cached Drive or Picker copies when offline or when a token fails.
 4. **Do not build on** the Library API app-created album, shared albums, rclone or gphotos-sync. None of them can see photos you add in the Photos app.
 5. **Watch the Ambient API.** If Google opens it to individuals, it delivers the exact goal: albums as live media sources and 240 list calls per device per day. A one-line interest-form submission costs nothing, but the form expects a company.
-6. **Browser automation** delivers the exact goal today. Use it only if the owner accepts the ToS risk, runs a home server, and uses a dedicated Google account that receives the album through specific-person sharing. Never use it with the main account.
+6. **Not pursued: browser automation.** It would deliver the exact goal, but automating the Google Photos web app breaks Google's terms, so this project leaves it out.
 
 **Kindle implementation notes**
 

@@ -132,7 +132,7 @@ def screen_plane(p, photo):
 
 def device_objects(p, photo=None):
     """The black device and its printed wordmark, in local millimetres."""
-    photo = photo or os.path.join(PHOTO_DIR, "evans-boardwalk.jpg")
+    photo = photo or os.path.join(PHOTO_DIR, "lange-migrant-mother.jpg")
     kindle = body("kindle", p["KX0"], p["KZ0"], p["FRONT_T"])
     shell = _principled("black-shell", (0.008, 0.008, 0.009), 0.60)
     shell.node_tree.nodes["Principled BSDF"].inputs["Specular IOR Level"].default_value = 0.2
@@ -260,7 +260,7 @@ def _stage(p, quick):
 
     photos = sorted(f for f in os.listdir(PHOTO_DIR) if f.lower().endswith(".jpg")) if os.path.isdir(PHOTO_DIR) else []
     pick = lambda name: os.path.join(PHOTO_DIR, name if name in photos else photos[0])
-    device = device_objects(p, pick("evans-boardwalk.jpg"))
+    device = device_objects(p, pick("lange-migrant-mother.jpg"))
     walnut = wood("walnut", (0.018, 0.0085, 0.004))
     for ob in device.values():
         ob.parent = root
@@ -399,7 +399,7 @@ def render(parts, out, p, quick=False, only=None):
     for ob in list(parts.values()) + [plug, cable]:
         ob.parent = root
 
-    def shot(fname, loc, target, photo="evans-boardwalk.jpg", wall_on=True):
+    def shot(fname, loc, target, photo="lange-migrant-mother.jpg", wall_on=True):
         if only and only not in fname:
             return
         wall.hide_render = not wall_on
@@ -577,7 +577,7 @@ def render_gallery(parts, out, p, quick=False, only=None):
     world_of = lambda x, y, z: root.matrix_world @ Vector((x, y, z))
     centre = world_of(p["W"] / 2, p["D"] / 2, p["H"] / 2)
 
-    def shot(fname, loc, target, photo="evans-boardwalk.jpg", wall_on=True, lens=80):
+    def shot(fname, loc, target, photo="lange-migrant-mother.jpg", wall_on=True, lens=80):
         if only and only not in fname:
             return False
         wall.hide_render = not wall_on

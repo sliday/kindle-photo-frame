@@ -107,6 +107,10 @@ uv run --with trimesh --with networkx --with lxml --with scipy python check_prin
 
 `check_print.py` reports, for every part, whether it is watertight and one body, and its widest unsupported overhang. `--check` renders each front in flat colours from 18 angles and proves the Kindle's logo stays hidden (`visibility.txt`).
 
+## Legal
+
+This repo holds the frame app, the stand designs and helper scripts. It holds no jailbreak or circumvention code: the jailbreak is third-party ([KindleModding](https://github.com/KindleModding)'s WinterBreak2), and [JAILBREAK.md](JAILBREAK.md) describes using it on a Kindle you own. The frame shows your own photos and does not touch Kindle books, DRM or Amazon's ads. Jailbreaking your own device is broadly allowed in the EU; in the US, dedicated e-readers have no DMCA jailbreak exemption, so check the law where you live. Kindle is a trademark of Amazon.com, Inc., and Claude Code is a trademark of Anthropic; this project is not affiliated with either.
+
 ## Licenses
 
-Code, scripts and the frame stand designs: MIT ([LICENSE](LICENSE)). Inter typeface: SIL Open Font License (`filmframe/assets/Inter-LICENSE.txt`). Weather icons: Lucide, ISC (`filmframe/assets/icons/LICENSE.txt`). Sample photos: public domain ([samples/SOURCES.md](samples/SOURCES.md)).
+Code, scripts and the frame stand designs: MIT ([LICENSE](LICENSE)). Inter typeface: SIL Open Font License (`filmframe/assets/Inter-LICENSE.txt`). Weather icons: Lucide, ISC (`filmframe/assets/icons/LICENSE.txt`). Sample photos: public domain, US government (FSA/OWI) works from the Library of Congress ([samples/SOURCES.md](samples/SOURCES.md)). Go modules fetched at build time: BSD-3-Clause (`golang.org/x/...`, `srwiley/oksvg`, `srwiley/rasterx`).
