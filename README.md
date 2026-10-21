@@ -82,4 +82,4 @@ cd frame && blender -b -P build_frame.py -- print --render
 
 ## Licenses
 
-Inter typeface: SIL Open Font License (`filmframe/assets/Inter-LICENSE.txt`). Weather icons: Lucide, ISC.
+Code, scripts and the frame stand design: MIT ([LICENSE](LICENSE)). Inter typeface: SIL Open Font License (`filmframe/assets/Inter-LICENSE.txt`). Weather icons: Lucide, ISC (`filmframe/assets/icons/LICENSE.txt`). Sample photos: public domain ([samples/SOURCES.md](samples/SOURCES.md)).
