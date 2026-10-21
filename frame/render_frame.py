@@ -1,6 +1,6 @@
-"""Shelf renders of the frame: oak with the black line, walnut with the paper mat, and the back.
-Called from build_frame.py with --render. Scene units: the parts are in mm under a root
-empty scaled to metres, so lights and the camera use ordinary metre values."""
+"""Shelf renders of both frame designs: render() for the bot (build_frame.py --render) and
+render_gallery() for the gallery frame (build_gallery.py --render). Scene units: the parts are in
+mm under a root empty scaled to metres, so lights and the camera use ordinary metre values."""
 import math
 import os
 
@@ -168,11 +168,13 @@ def annotate(png, cam, labels, font):
         tx, ty = x + dx * s, y + dy * s
         cmd += ["-fill", "none", "-stroke", "#1d1d1f", "-draw", f"line {x:.0f},{y:.0f} {tx:.0f},{ty:.0f}",
                 "-fill", "#1d1d1f", "-stroke", "none", "-draw", f"circle {x:.0f},{y:.0f} {x + 6 * s:.0f},{y:.0f}",
-                "-draw", f"text {tx + (8 if dx >= 0 else -8) * s:.0f},{ty + 10 * s:.0f} '{text}'"]
+                "-undercolor", "#f4f3f0e0",  # labels stay legible over the photo and the wood
+                "-draw", f"text {tx + (8 if dx >= 0 else -8) * s:.0f},{ty + 10 * s:.0f} '{text}'", "-undercolor", "none"]
     subprocess.run(cmd + [png], check=True)
 
 
-def render(parts, out, p, quick=False, only=None):
+def _stage(p, quick):
+    """Scene shared by both designs: engine, shelf, wall, lights, camera, the Kindle and its screen."""
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
     try:
@@ -202,7 +204,7 @@ def render(parts, out, p, quick=False, only=None):
     root = bpy.data.objects.new("root", None)
     sc.collection.objects.link(root)
     lean = p["LEAN"]
-    root.matrix_world = (Matrix.Translation((0, 0, p["LEG_H"] * math.cos(lean) * 0.001))
+    root.matrix_world = (Matrix.Translation((0, 0, p.get("LEG_H", 0.0) * math.cos(lean) * 0.001))
                          @ Matrix.Rotation(-lean, 4, "X") @ Matrix.Scale(0.001, 4))
 
     kindle = rounded_prism("kindle", p["KX0"], p["KZ0"], p["KX0"] + p["K_W"], p["KZ0"] + p["K_H"], 6.0,
@@ -212,11 +214,9 @@ def render(parts, out, p, quick=False, only=None):
     pick = lambda name: os.path.join(PHOTO_DIR, name if name in photos else photos[0])
     screen = screen_plane(p, pick("evans-boardwalk.jpg"))
 
-    oak = wood("oak", (0.50, 0.32, 0.17))
     walnut = wood("walnut", (0.018, 0.0085, 0.004))
     paper = _principled("mat", (0.74, 0.70, 0.62), 0.85)
-    plug, cable = cable_object(p, _principled("cable", (0.012, 0.012, 0.013), 0.55))
-    for ob in list(parts.values()) + [kindle, screen, plug, cable]:
+    for ob in (kindle, screen):
         ob.parent = root
 
     # a shelf slab rather than a plane, so the cutaway shows it in section
@@ -253,6 +253,17 @@ def render(parts, out, p, quick=False, only=None):
     cam = bpy.data.objects.new("cam", cam_d)
     sc.collection.objects.link(cam)
     sc.camera = cam
+    return dict(sc=sc, root=root, kindle=kindle, screen=screen, pick=pick, walnut=walnut, paper=paper,
+                floor=floor, wall=wall, cam=cam, cam_d=cam_d)
+
+
+def render(parts, out, p, quick=False, only=None):
+    S = _stage(p, quick)
+    sc, root, kindle, screen, pick, walnut, paper, floor, wall, cam, cam_d = (
+        S[k] for k in ("sc", "root", "kindle", "screen", "pick", "walnut", "paper", "floor", "wall", "cam", "cam_d"))
+    plug, cable = cable_object(p, _principled("cable", (0.012, 0.012, 0.013), 0.55))
+    for ob in list(parts.values()) + [plug, cable]:
+        ob.parent = root
 
     def shot(fname, loc, target, front, with_mat, wood_mat, photo, wall_on=True):
         if only and only not in fname:
@@ -275,7 +286,7 @@ def render(parts, out, p, quick=False, only=None):
 
     tgt = (0.066, 0.02, 0.105)
     shot("render-walnut.png", (-0.17, -0.52, 0.17), tgt, "front-classic", False, walnut, "evans-boardwalk.jpg")
-    shot("render-walnut-mat.png", (0.30, -0.49, 0.16), tgt, "front-mat", True, walnut, "delano-victory-garden.jpg")
+    shot("render-walnut-mat.png", (0.30, -0.49, 0.16), tgt, "front-mat", True, walnut, "evans-boardwalk.jpg")
     shot("render-back.png", (0.42, 0.40, 0.20), (0.066, 0.03, 0.06), "front-classic", False, walnut, "delano-victory-garden.jpg",
          wall_on=False)
     cam_d.lens = 85
@@ -328,3 +339,169 @@ def render(parts, out, p, quick=False, only=None):
             ("then lies on the shelf, off to the charger", on_shelf(0.3), (60, -70)),
         ], font)
         print("annotated render-section.png")
+
+
+def right_angle_cable(p, mat):
+    """A 90-degree micro-USB plug turned toward the nearer cable exit, its cable along the gallery
+    floor, out through the notch in the back and onto the shelf."""
+    px, py, kz0, d = p["PORT_X"], p["PORT_Y"], p["KZ0"], p["D"]
+    gz0 = p["GALLERY"][1]
+    ex = min(p["CABLE_EXITS"], key=lambda x: abs(x - px))
+    s = -1 if ex < px else 1                       # the side the plug turns to
+    plug = rounded_prism("plug", min(px - 4 * s, px + 15 * s), kz0 - 10.5, max(px - 4 * s, px + 15 * s),
+                         kz0 - 0.3, 2.0, py - 3.5, py + 3.5)
+    zc, r = gz0 + 2.0, 7.0
+    shelf = lambda y: y * math.tan(p["LEAN"]) + 2.0 / math.cos(p["LEAN"])
+    pts = [(px + 15 * s, py, kz0 - 6), (px + 19 * s, py, kz0 - 7), (px + 23 * s, py, zc + 1), (ex - r * s, py, zc)]
+    for k in range(1, 9):                          # quarter turn toward the back
+        a = math.pi / 2 * k / 8
+        pts.append((ex - r * s * math.cos(a), py + r * math.sin(a), zc))
+    pts += [(ex, d + 2, zc), (ex, d + 8, shelf(d + 8) + 0.5), (ex, d + 14, shelf(d + 14)), (ex, d + 170, shelf(d + 170))]
+    cd = bpy.data.curves.new("cable", "CURVE")
+    cd.dimensions, cd.bevel_depth, cd.bevel_resolution, cd.use_fill_caps = "3D", 2.0, 4, True
+    sp = cd.splines.new("POLY")
+    sp.points.add(len(pts) - 1)
+    for i, (x, y, z) in enumerate(pts):
+        sp.points[i].co = (x, y, z, 1)
+    co = bpy.data.objects.new("cable-curve", cd)
+    bpy.context.scene.collection.objects.link(co)
+    dg = bpy.context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(co.evaluated_get(dg))
+    bpy.data.objects.remove(co)
+    cable = bpy.data.objects.new("cable", me)
+    bpy.context.scene.collection.objects.link(cable)
+    for ob in (plug, cable):
+        ob.data.materials.append(mat)
+    return plug, cable, pts
+
+
+def _box_object(name, size, loc, mat):
+    ob = bpy.data.objects.new(name, bpy.data.meshes.new(name))
+    bpy.context.scene.collection.objects.link(ob)
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    bm.to_mesh(ob.data)
+    bm.free()
+    ob.scale, ob.location = size, loc
+    ob.data.materials.append(mat)
+    return ob
+
+
+def _lathe(name, prof, loc, mat, segs=64):
+    """A turned object (vase) from a (radius, height) profile in metres, open at the top."""
+    bm = bmesh.new()
+    rings = [[bm.verts.new((loc[0] + r * math.cos(2 * math.pi * k / segs), loc[1] + r * math.sin(2 * math.pi * k / segs),
+                            loc[2] + z)) for k in range(segs)] for r, z in prof]
+    bm.faces.new(list(reversed(rings[0])))
+    for a, b in zip(rings, rings[1:]):
+        for k in range(segs):
+            bm.faces.new((a[k], a[(k + 1) % segs], b[(k + 1) % segs], b[k]))
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    for f in me.polygons:
+        f.use_smooth = True
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    ob.data.materials.append(mat)
+    return ob
+
+
+def _stem(name, pts, mat, r=0.0011):
+    cd = bpy.data.curves.new(name, "CURVE")
+    cd.dimensions, cd.bevel_depth, cd.bevel_resolution = "3D", r, 2
+    sp = cd.splines.new("NURBS")
+    sp.points.add(len(pts) - 1)
+    for i, pt in enumerate(pts):
+        sp.points[i].co = (*pt, 1)
+    sp.use_endpoint_u, sp.order_u = True, 3
+    ob = bpy.data.objects.new(name, cd)
+    bpy.context.scene.collection.objects.link(ob)
+    ob.data.materials.append(mat)
+    return ob
+
+
+def render_gallery(parts, out, p, quick=False, only=None):
+    """Gallery frame: hero, front, back, the cable cutaway and a styled shelf."""
+    p = dict(p, FRONT_T=p["FACE_T"] + p["MAT_T"])   # the screen sits behind the mat
+    S = _stage(p, quick)
+    sc, root, screen, pick, walnut, paper, floor, wall, cam, cam_d = (
+        S[k] for k in ("sc", "root", "screen", "pick", "walnut", "paper", "floor", "wall", "cam", "cam_d"))
+    plug, cable, pts = right_angle_cable(p, _principled("cable", (0.012, 0.012, 0.013), 0.55))
+    for ob in list(parts.values()) + [plug, cable]:
+        ob.parent = root
+    for key, ob in parts.items():
+        ob.data.materials.clear()
+        ob.data.materials.append(paper if key == "gallery-mat" else walnut)
+    world_of = lambda x, y, z: root.matrix_world @ Vector((x, y, z))
+    centre = world_of(p["W"] / 2, p["D"] / 2, p["H"] / 2)
+
+    def shot(fname, loc, target, photo="evans-boardwalk.jpg", wall_on=True, lens=60):
+        if only and only not in fname:
+            return False
+        wall.hide_render = not wall_on
+        screen.data.materials[0].node_tree.nodes["Image Texture"].image = bpy.data.images.load(pick(photo), check_existing=True)
+        cam_d.lens = lens
+        cam.location = loc
+        look_at(cam, target)
+        sc.render.filepath = os.path.join(out, fname)
+        bpy.ops.render.render(write_still=True)
+        print("rendered", fname)
+        return True
+
+    shot("render-gallery.png", (0.30, -0.49, 0.16), centre)  # from the right: the cable leaves on the left
+    shot("render-gallery-front.png", (centre.x, -0.80, centre.z + 0.01), centre, lens=85)
+    shot("render-gallery-back.png", (0.42, 0.40, 0.20), world_of(p["W"] / 2, p["D"], p["H"] * 0.3), wall_on=False)
+
+    # a styled shelf: the slab gets a visible front edge, a stack of books and a vase keep it company
+    if not only or "shelf" in only:
+        floor.scale, floor.location = (1.5, 0.30, 0.018), (0, 0.03, -0.009)
+        books = [_box_object(f"book{i}", sz, loc, _principled(f"book{i}", col, 0.75)) for i, (sz, loc, col) in enumerate([
+            ((0.15, 0.21, 0.026), (0.285, 0.05, 0.013), (0.11, 0.20, 0.16)),
+            ((0.14, 0.20, 0.032), (0.28, 0.055, 0.042), (0.46, 0.20, 0.11)),
+            ((0.13, 0.19, 0.020), (0.285, 0.05, 0.068), (0.80, 0.74, 0.62))])]
+        for b, rot in zip(books, (-6, -10, -4)):
+            b.rotation_euler.z = math.radians(rot)
+        vase = _lathe("vase", [(0.030, 0.0), (0.037, 0.02), (0.040, 0.05), (0.034, 0.09), (0.018, 0.12),
+                               (0.012, 0.14), (0.014, 0.148), (0.012, 0.150)],
+                      (-0.075, 0.06, 0.0), _principled("vase", (0.42, 0.44, 0.39), 0.65))
+        straw = _principled("stem", (0.62, 0.52, 0.36), 0.8)
+        stems = [_stem(f"stem{i}", pts, straw) for i, pts in enumerate([
+            [(-0.075, 0.06, 0.14), (-0.08, 0.06, 0.22), (-0.10, 0.065, 0.29)],
+            [(-0.074, 0.061, 0.14), (-0.07, 0.058, 0.23), (-0.05, 0.05, 0.30)],
+            [(-0.076, 0.06, 0.14), (-0.078, 0.064, 0.20), (-0.085, 0.07, 0.25)]])]
+        key = bpy.data.objects["key"].data
+        key.color = (1.0, 0.91, 0.82)
+        sc.render.resolution_x, sc.render.resolution_y = 1600, 1000
+        shot("render-gallery-shelf.png", (0.09, -0.66, 0.21), (0.10, 0.03, 0.105), lens=50)
+        sc.render.resolution_x, sc.render.resolution_y = 1200, 1500
+        key.color = (1.0, 1.0, 1.0)
+        for ob in books + [vase] + stems:
+            bpy.data.objects.remove(ob)
+        floor.scale, floor.location = (1.5, 1.5, 0.018), (0, 0, -0.009)
+
+    # cutaway: the bottom rail's front opened up, plug and cable in mascot orange
+    if only and "cable" not in only:
+        return
+    accent = _principled("cable-accent", (0.70, 0.22, 0.10), 0.5)
+    for ob in (plug, cable):
+        ob.data.materials.clear()
+        ob.data.materials.append(accent)
+    cutter = rounded_prism("cut-rail", -5, -60, p["W"] + 5, p["KZ0"] - 0.6, 0.5, -5, p["FRONT_T"] + 0.6)
+    cutter.parent, cutter.hide_render = root, True
+    for key in ("gallery-front", "gallery-mat"):
+        mod = parts[key].modifiers.new("cut", "BOOLEAN")
+        mod.operation, mod.solver, mod.object = "DIFFERENCE", "EXACT", cutter
+    sc.render.resolution_x, sc.render.resolution_y = 1600, 1000
+    if shot("render-gallery-cable.png", (0.0, -0.36, 0.09), world_of(p["W"] * 0.5, p["D"] / 2, p["KZ0"] * 1.6),
+            wall_on=False, lens=60):
+        font = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "filmframe", "assets", "Inter-Regular.ttf")
+        gz0 = p["GALLERY"][1]
+        far = max(p["CABLE_EXITS"], key=lambda x: abs(x - p["PORT_X"]))
+        annotate(sc.render.filepath, cam, [
+            ("90° micro-USB plug", world_of(p["PORT_X"], p["PORT_Y"] - 3.5, p["KZ0"] - 5), (260, -200)),
+            ("the cable runs along the rail and out through the back", world_of(*pts[3]), (-40, 170)),
+            (f"second exit, for a plug that turns {'right' if far > p['PORT_X'] else 'left'}",
+             world_of(far, p["D_A"], gz0 + 5), (-200, 110)),
+        ], font)
+        print("annotated render-gallery-cable.png")

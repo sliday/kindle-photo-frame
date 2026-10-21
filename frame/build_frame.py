@@ -17,6 +17,9 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from geom import apply_boolean, box, cylinder_y, loft, prism, rect_skeleton, rounded  # noqa: E402
+
 ARGS = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 OUT = os.path.abspath(ARGS[0] if ARGS else "frame-out")
 RENDER = "--render" in ARGS
@@ -33,7 +36,7 @@ PORT_X, BUTTON_X = 46.35, 70.35               # micro-USB and power button on th
 CLEAR_SIDE, CLEAR_TOP = 0.4, 0.8              # pocket play
 POCKET_D = 8.5                                # Kindle 8.18 + play
 FRONT_T, BACK_T = 2.4, 3.0                    # plate thicknesses
-WALL_SIDE, WALL_TOP = 8.0, 3.0
+WALL_SIDE, WALL_TOP = 12.0, 3.0                # side walls hold the screws: countersinks stay clear of the edge
 RAIL = 10.0                                   # solid rail under the Kindle
 # Legs. The cable hides inside the leg under the micro-USB port: the plug and cable drop down a
 # channel closed at the front and leave through the back of that leg's foot (the owner's pick).
@@ -50,15 +53,16 @@ ARM_OUT = 9.0
 ARM_FRAC = (0.58, 0.75)                       # arm span as a share of body height, from the bottom
 BORDER = 2.5                                  # black line left visible around the image (max 5)
 WINDOW_BEVEL = 1.8
-EDGE_R_FRONT, EDGE_R_BACK = 2.0, 1.2
+EDGE_C_FRONT, EDGE_R_BACK = 2.0, 1.2          # the front prints face down: 45-degree chamfer there, no round
 R_BODY, R_ARM, R_LEG, R_INNER = 6.0, 2.5, 2.0, 1.2
 LEAN = math.radians(10)                       # leans back on the fins
 FIN_T, FIN_TOP_Z, FIN_REACH = 4.0, 62.0, 55.0  # FIN_REACH: floor contact behind the front feet
 EYE_H, EYE_W, EYE_STROKE, EYE_DEPTH = 7.0, 4.6, 1.6, 0.8
 SCREW_Z = (25.0, 165.0)
 SCREW_PILOT, SCREW_CLEAR, SCREW_CSK, SCREW_DEPTH = 2.5, 3.4, 6.4, 8.0
-MAT_T, MAT_WOOD_BORDER, MAT_UNDER, MAT_SCREEN_BORDER = 1.2, 9.0, 5.0, 0.0
-SEG = 8                                       # segments per rounded corner
+SCREW_LEN = 10.0                              # M3x10 countersunk
+MAT_T, MAT_WOOD_BORDER, MAT_UNDER, MAT_SCREEN_BORDER = 1.2, 9.0, 5.0, -1.0  # mat overlaps the image 1 mm
+MAT_BOTTOM_BORDER = 13.0                      # mats are heavier at the bottom
 
 # ---------------------------------------------------------------- derived
 W = 2 * WALL_SIDE + K_W + 2 * CLEAR_SIDE
@@ -83,6 +87,8 @@ ARM_Z = (ARM_FRAC[0] * H, ARM_FRAC[1] * H)
 assert all(b - a > 4 for (_, a), (b, _) in zip(LEGS, LEGS[1:])), "legs overlap"
 assert LEG_W / 2 - CABLE_LEG_HALF >= 1.6, "cable leg walls too thin"
 assert CABLE_LEG_HALF >= 5.25 + 0.5, "plug does not fit the cable channel"
+assert D - SCREW_LEN >= D_A - SCREW_DEPTH + 1.0, "a flush screw would bottom out in its pilot"
+assert WALL_SIDE / 2 - SCREW_CSK / 2 - EDGE_R_BACK >= 1.5, "countersink too close to the edge"
 
 
 # ---------------------------------------------------------------- 2D outline helpers
@@ -102,100 +108,6 @@ def outline_skeleton():
         ((-ARM_OUT, ARM_Z[0]), R_ARM), ((0, ARM_Z[0]), R_INNER),
     ]
     return pts
-
-
-def rect_skeleton(x0, z0, x1, z1, r):
-    return [((x0, z0), r), ((x1, z0), r), ((x1, z1), r), ((x0, z1), r)]
-
-
-def rounded(skel, d=0.0):
-    """Offset an orthogonal CCW polygon inward by d (outward if d<0) and round its corners.
-    Every result has the same point count, so offsets can be lofted into one solid."""
-    n = len(skel)
-    P = [Vector(p) for p, _ in skel]
-    out = []
-    for i in range(n):
-        prev, cur, nxt = P[i - 1], P[i], P[(i + 1) % n]
-        u = (cur - prev).normalized()
-        w = (nxt - cur).normalized()
-        left_u = Vector((-u.y, u.x))
-        left_w = Vector((-w.y, w.x))
-        v = cur + d * (left_u + left_w)          # corner of the offset polygon
-        convex = u.x * w.y - u.y * w.x > 0
-        r = skel[i][1] - d if convex else skel[i][1] + d
-        r = max(r, 0.05)
-        t1 = v - u * r
-        c = t1 + (left_u if convex else -left_u) * r
-        a1 = math.atan2(t1.y - c.y, t1.x - c.x)
-        t2 = v + w * r
-        a2 = math.atan2(t2.y - c.y, t2.x - c.x)
-        da = (a2 - a1 + math.pi) % (2 * math.pi) - math.pi
-        for k in range(SEG + 1):
-            a = a1 + da * k / SEG
-            out.append((c.x + r * math.cos(a), c.y + r * math.sin(a)))
-    return out
-
-
-# ---------------------------------------------------------------- 3D helpers
-def loft(name, rings):
-    """Closed solid through rings [(y, [(x, z), ...])], all rings with equal point counts."""
-    bm = bmesh.new()
-    loops = []
-    for y, pts in rings:
-        loops.append([bm.verts.new((x, y, z)) for x, z in pts])
-    for a, b in zip(loops, loops[1:]):
-        n = len(a)
-        for i in range(n):
-            bm.faces.new((a[i], a[(i + 1) % n], b[(i + 1) % n], b[i]))
-    bm.faces.new(list(reversed(loops[0])))
-    bm.faces.new(loops[-1])
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    me = bpy.data.meshes.new(name)
-    bm.to_mesh(me)
-    bm.free()
-    ob = bpy.data.objects.new(name, me)
-    bpy.context.scene.collection.objects.link(ob)
-    return ob
-
-
-def prism(name, pts, y0, y1):
-    return loft(name, [(y0, pts), (y1, pts)])
-
-
-def box(name, x0, y0, z0, x1, y1, z1, r=0.0):
-    return prism(name, rounded(rect_skeleton(x0, z0, x1, z1, r)), y0, y1)
-
-
-def cylinder_y(name, x, z, r, y0, y1, r1=None, segs=40):
-    r1 = r if r1 is None else r1
-    ring = lambda rr: [(x + rr * math.cos(2 * math.pi * k / segs), z + rr * math.sin(2 * math.pi * k / segs))
-                       for k in range(segs)]
-    return loft(name, [(y0, ring(r)), (y1, ring(r1))])
-
-
-def apply_boolean(target, others, op):
-    """Exact boolean with every object in others, applied; the cutters are deleted."""
-    coll = bpy.data.collections.new("ops")
-    bpy.context.scene.collection.children.link(coll)
-    for o in others:
-        for c in o.users_collection:
-            c.objects.unlink(o)
-        coll.objects.link(o)
-    mod = target.modifiers.new("bool", "BOOLEAN")
-    mod.operation = op
-    mod.solver = "EXACT"
-    mod.operand_type = "COLLECTION"
-    mod.collection = coll
-    dg = bpy.context.evaluated_depsgraph_get()
-    me = bpy.data.meshes.new_from_object(target.evaluated_get(dg))
-    target.modifiers.clear()
-    old = target.data
-    target.data = me
-    bpy.data.meshes.remove(old)
-    for o in list(coll.objects):
-        bpy.data.objects.remove(o)
-    bpy.data.collections.remove(coll)
 
 
 def floor_cutter(name):
@@ -255,10 +167,8 @@ def body_rings(y_front, y_back, round_front, round_back):
     rings = []
     steps = 5
     if round_front:
-        for k in range(steps):
-            t = math.pi / 2 * k / steps
-            rings.append((y_front + EDGE_R_FRONT * (1 - math.cos(t)), rounded(skel, EDGE_R_FRONT * (1 - math.sin(t)))))
-    rings.append((y_front + (EDGE_R_FRONT if round_front else 0), rounded(skel)))
+        rings.append((y_front, rounded(skel, EDGE_C_FRONT)))
+    rings.append((y_front + (EDGE_C_FRONT if round_front else 0), rounded(skel)))
     rings.append((y_back - (EDGE_R_BACK if round_back else 0), rounded(skel)))
     if round_back:
         for k in range(1, steps + 1):
@@ -270,7 +180,7 @@ def body_rings(y_front, y_back, round_front, round_back):
 def make_front(name, with_mat):
     ob = loft(name, body_rings(0.0, D_A, True, False))
     border = MAT_WOOD_BORDER if with_mat else BORDER
-    wx0, wz0, wx1, wz1 = SX0 - border, SZ0 - border, SX1 + border, SZ1 + border
+    wx0, wz0, wx1, wz1 = SX0 - border, SZ0 - (MAT_BOTTOM_BORDER if with_mat else border), SX1 + border, SZ1 + border
     win = rect_skeleton(wx0, wz0, wx1, wz1, 1.0)
     cut = [loft("window", [(-1.0, rounded(win, -(WINDOW_BEVEL + 1.0))),
                            (WINDOW_BEVEL, rounded(win)), (D_A + 1, rounded(win))])]
@@ -297,15 +207,17 @@ def make_front(name, with_mat):
 
 def mat_outer():
     b = MAT_WOOD_BORDER + MAT_UNDER
-    return (SX0 - b, SZ0 - b, SX1 + b, SZ1 + b)
+    return (SX0 - b, SZ0 - MAT_BOTTOM_BORDER - MAT_UNDER, SX1 + b, SZ1 + b)
 
 
 def make_mat(name):
     x0, z0, x1, z1 = mat_outer()
     ob = box(name, x0, FRONT_T - MAT_T, z0, x1, FRONT_T, z1, 1.5)
     b = MAT_SCREEN_BORDER
-    apply_boolean(ob, [box("matwin", SX0 - b, FRONT_T - MAT_T - 1, SZ0 - b, SX1 + b, FRONT_T + 1, SZ1 + b, 0.6)],
-                  "DIFFERENCE")
+    # 45-degree bevel like a cut mat: the window is exact on the glass side, MAT_T wider facing out
+    win = rect_skeleton(SX0 - b, SZ0 - b, SX1 + b, SZ1 + b, 0.3)
+    apply_boolean(ob, [loft("matwin", [(FRONT_T - MAT_T - 1, rounded(win, -(MAT_T + 1))),
+                                       (FRONT_T + 1, rounded(win, 1.0))])], "DIFFERENCE")
     return ob
 
 
@@ -371,9 +283,9 @@ def export_stl(ob, path):
 
 # print orientation: flat face on the bed (Z=0), mm
 orient = {
-    "front-classic": Matrix.Rotation(-math.pi / 2, 4, "X"),        # front face down
-    "front-mat": Matrix.Rotation(-math.pi / 2, 4, "X"),
-    "mat": Matrix.Rotation(-math.pi / 2, 4, "X"),
+    "front-classic": Matrix.Rotation(math.pi / 2, 4, "X"),        # front face down
+    "front-mat": Matrix.Rotation(math.pi / 2, 4, "X"),
+    "mat": Matrix.Rotation(math.pi / 2, 4, "X"),
     "back": Matrix.Rotation(math.pi / 2, 4, "X"),                  # inner face down, fins up
 }
 for key, ob in parts.items():
