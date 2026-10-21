@@ -350,13 +350,19 @@ def right_angle_cable(p, mat):
     s = -1 if ex < px else 1                       # the side the plug turns to
     plug = rounded_prism("plug", min(px - 4 * s, px + 15 * s), kz0 - 10.5, max(px - 4 * s, px + 15 * s),
                          kz0 - 0.3, 2.0, py - 3.5, py + 3.5)
-    zc, r = gz0 + 2.0, 7.0
+    zc = gz0 + 5.0                                 # threads the notch below its arch
     shelf = lambda y: y * math.tan(p["LEAN"]) + 2.0 / math.cos(p["LEAN"])
-    pts = [(px + 15 * s, py, kz0 - 6), (px + 19 * s, py, kz0 - 7), (px + 23 * s, py, zc + 1), (ex - r * s, py, zc)]
-    for k in range(1, 9):                          # quarter turn toward the back
-        a = math.pi / 2 * k / 8
-        pts.append((ex - r * s * math.cos(a), py + r * math.sin(a), zc))
-    pts += [(ex, d + 2, zc), (ex, d + 8, shelf(d + 8) + 0.5), (ex, d + 14, shelf(d + 14)), (ex, d + 170, shelf(d + 170))]
+
+    def bez(a, b, c, e, n=12):
+        return [tuple((1 - t) ** 3 * a[i] + 3 * (1 - t) ** 2 * t * b[i] + 3 * (1 - t) * t * t * c[i] + t ** 3 * e[i]
+                      for i in range(3)) for t in (k / n for k in range(n + 1))]
+    # one smooth bend from the plug's side into the notch, measured from where the exit really is
+    x0, y_turn = px + 15 * s, p["D_A"] + 1.0
+    pts = bez((x0, py, kz0 - 6), (x0 + 0.6 * (ex - x0), py, kz0 - 6),
+              (ex, max(py, y_turn - 0.6 * abs(ex - x0)), zc), (ex, y_turn, zc))
+    y1 = d + 3                                     # out of the back plate, down onto the shelf
+    pts += bez((ex, y1, zc), (ex, y1 + 6, zc), (ex, y1 + 6, shelf(y1 + 12)), (ex, y1 + 14, shelf(y1 + 14)), 8)
+    pts.append((ex, d + 170, shelf(d + 170)))
     cd = bpy.data.curves.new("cable", "CURVE")
     cd.dimensions, cd.bevel_depth, cd.bevel_resolution, cd.use_fill_caps = "3D", 2.0, 4, True
     sp = cd.splines.new("POLY")
@@ -500,7 +506,7 @@ def render_gallery(parts, out, p, quick=False, only=None):
         far = max(p["CABLE_EXITS"], key=lambda x: abs(x - p["PORT_X"]))
         annotate(sc.render.filepath, cam, [
             ("90° micro-USB plug", world_of(p["PORT_X"], p["PORT_Y"] - 3.5, p["KZ0"] - 5), (260, -200)),
-            ("the cable runs along the rail and out through the back", world_of(*pts[3]), (-40, 170)),
+            ("the cable turns out through the back", world_of(*pts[6]), (-40, 170)),
             (f"second exit, for a plug that turns {'right' if far > p['PORT_X'] else 'left'}",
              world_of(far, p["D_A"], gz0 + 5), (-200, 110)),
         ], font)
