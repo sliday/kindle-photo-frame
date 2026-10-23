@@ -10,7 +10,7 @@ Two stands for a **Kindle Paperwhite 4 (10th gen, 2018, model PQ94WIF)**, in dar
 | Cable | micro-USB with a 90° plug | micro-USB with a straight plug |
 | Size | 156.6 × 198.2 mm, 11.2 mm deep, leans back 12° | 159.3 × 216.4 mm, 10.6 mm deep, leans back 10° |
 | Bed | 210 × 210 mm | 256 × 256 mm, or 250 × 210 with the part turned 90° |
-| Filament | 98 g, about 9 h | 88 g, about 8 h |
+| Filament | 75 g, about 7 h | 68 g, about 6.5 h |
 
 ## How it goes together
 
@@ -30,7 +30,7 @@ To take the Kindle out, push it up from behind through the open back and lift it
 ## Settings (both stands)
 
 - **Filament:** dark walnut wood-fill PLA, or plain PLA in walnut brown. A 0.6 mm nozzle is safest with wood fill; 0.4 works.
-- 0.2 mm layers, 3 walls, 15% gyroid infill, **no supports, no brim**.
+- 0.2 mm layers, **2 walls, 10% gyroid infill, 3 bottom and 4 top solid layers, no supports, no brim**. These settings use about a quarter less filament than 3 walls and 15% infill and print about 2 hours faster, with the same look: the visible face is the first layer on the bed, and the top layers only cover hidden surfaces. For the least filament, lightning infill brings the parts to 64 g and 58 g; it leaves the thick walls nearly hollow inside.
 - STL and 3MF files are equivalent (millimetres), and each is laid flat in its print orientation: face down, feet and lips pointing up.
 - The bed surface becomes the visible face: textured PEI gives a soft matte finish, smooth PEI a satin one. The face edges are 45° chamfers rather than rounds, so the first layers don't sag.
 - If the Kindle binds in the channels, sand the inside of the lips lightly; if it rattles, a strip of thin felt on each lip takes up the play.
